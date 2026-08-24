@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
+import { Route, Switch } from "wouter";
 import { ensureSession, requestPersistentStorage } from "./lib/supabase.js";
+import { hasReferenceData, refreshReferenceData } from "./lib/reference-data.js";
+import { startSyncLoop } from "./lib/sync.js";
+import { CaptureChoice } from "./features/capture/CaptureChoice.js";
+import { ManualEntry } from "./features/capture/ManualEntry.js";
+import { ConfirmTrip } from "./features/capture/ConfirmTrip.js";
 
 type BootState =
   | { status: "loading" }
@@ -8,9 +14,8 @@ type BootState =
 
 /**
  * Boot shell. The silent anonymous session is established before any capture
- * surface renders, so the first write already has a durable owner (§9.2).
- *
- * This is scaffolding: the capture flow (stage 2) replaces the ready state.
+ * surface renders (§9.2), reference data is cached for offline use, and the
+ * sync loop starts so committed trips drain to Supabase from trip 1.
  */
 export function App() {
   const [state, setState] = useState<BootState>({ status: "loading" });
@@ -22,6 +27,18 @@ export function App() {
       try {
         const session = await ensureSession();
         const persistent = await requestPersistentStorage();
+
+        if (!(await hasReferenceData())) {
+          await refreshReferenceData();
+        } else {
+          // Don't block boot on a refresh; stale cached reference data is
+          // fine for a session, network is not guaranteed at launch.
+          void refreshReferenceData();
+        }
+
+        const stopSync = startSyncLoop();
+        window.addEventListener("beforeunload", stopSync, { once: true });
+
         if (cancelled) return;
         setState({ status: "ready", userId: session.user.id, persistent });
       } catch (err) {
@@ -56,17 +73,25 @@ export function App() {
   }
 
   return (
-    <main>
-      <h1>MarketPulse</h1>
-      <p>Session ready.</p>
-      <dl>
-        <dt>User</dt>
-        <dd>
-          <code>{state.userId}</code>
-        </dd>
-        <dt>Persistent storage</dt>
-        <dd>{state.persistent ? "granted" : "denied — sync is the durability guarantee"}</dd>
-      </dl>
-    </main>
+    <Switch>
+      <Route path="/capture/manual">
+        <ManualEntry userId={state.userId} />
+      </Route>
+      <Route path="/capture/confirm">
+        <ConfirmTrip userId={state.userId} />
+      </Route>
+      <Route path="/capture">
+        <CaptureChoice />
+      </Route>
+      <Route path="/">
+        <main>
+          <h1>MarketPulse</h1>
+          <p>Session ready.</p>
+          <a href="/capture">
+            <button type="button">Log a shop</button>
+          </a>
+        </main>
+      </Route>
+    </Switch>
   );
 }

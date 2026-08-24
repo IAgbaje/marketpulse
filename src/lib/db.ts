@@ -74,11 +74,20 @@ export interface LocalUnit {
   conversionConfidence: number;
 }
 
+export interface LocalLocation {
+  id: string;
+  parentId: string | null;
+  level: "country" | "state" | "lga" | "area" | "market";
+  name: string;
+  marketType: "open_market" | "supermarket" | "other" | null;
+}
+
 const db = new Dexie("marketpulse") as Dexie & {
   trips: EntityTable<LocalTrip, "id">;
   lines: EntityTable<LocalLine, "id">;
   commodities: EntityTable<LocalCommodity, "id">;
   units: EntityTable<LocalUnit, "id">;
+  locations: EntityTable<LocalLocation, "id">;
 };
 
 // IndexedDB cannot index booleans, so `isDraft` is not an index — draft
@@ -88,6 +97,7 @@ db.version(1).stores({
   lines: "id, tripId, userId, commodityId, syncStatus",
   commodities: "id, slug, category, substituteGroup",
   units: "id, commodityId",
+  locations: "id, parentId, level",
 });
 
 export { db };

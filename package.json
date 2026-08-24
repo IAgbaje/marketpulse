@@ -26,7 +26,9 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",
     "dexie": "^4.4.5",
+    "dexie-react-hooks": "^4.4.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "wouter": "^3.10.0"
   }
 }
