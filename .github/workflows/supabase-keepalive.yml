@@ -12,7 +12,7 @@ jobs:
       - name: Ping keepalive function
         run: |
           status=$(curl -s -o /dev/null -w "%{http_code}" \
-            "https://syfpkmekdhtmuufotwqa.supabase.co/functions/v1/keepalive")
+            "https://qkohesyqyknavriyhlsc.supabase.co/functions/v1/keepalive")
           echo "HTTP status: $status"
           if [ "$status" != "200" ]; then
             echo "Keepalive ping failed"

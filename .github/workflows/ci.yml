@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests (includes the exact-tie property suite)
+        run: npm test
+
+      - name: Build
+        run: npm run build
+        env:
+          # Build-time only. Publishable values; RLS is the real control.
+          VITE_SUPABASE_URL: https://qkohesyqyknavriyhlsc.supabase.co
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Bundle size gate
+        run: node scripts/check-bundle-size.mjs
