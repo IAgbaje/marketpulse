@@ -80,15 +80,15 @@ values
   ('eggs',           'Eggs',           'protein',    'semi',   'count', null,          'stub');
 
 insert into public.commodity_units (commodity_id, unit_name, dimension, factor_to_base, conversion_confidence)
-select id, 'kg', 'mass', 1000, 1.00 from public.commodities where dimension = 'mass'
+select id, 'kg', 'mass'::base_dimension, 1000, 1.00 from public.commodities where dimension = 'mass'
 union all
-select id, 'litre', 'volume', 1000, 1.00 from public.commodities where dimension = 'volume'
+select id, 'litre', 'volume'::base_dimension, 1000, 1.00 from public.commodities where dimension = 'volume'
 union all
-select id, 'piece', 'count', 1000, 1.00 from public.commodities where dimension = 'count'
+select id, 'piece', 'count'::base_dimension, 1000, 1.00 from public.commodities where dimension = 'count'
 union all
-select id, 'paint', 'volume', 4500, 0.90 from public.commodities where slug in ('palm_oil', 'vegetable_oil')
+select id, 'paint', 'volume'::base_dimension, 4500, 0.90 from public.commodities where slug in ('palm_oil', 'vegetable_oil')
 union all
-select id, 'derica', 'mass', 1600, 0.70 from public.commodities where slug in ('beans', 'garri', 'imported_rice', 'local_rice');
+select id, 'derica', 'mass'::base_dimension, 1600, 0.70 from public.commodities where slug in ('beans', 'garri', 'imported_rice', 'local_rice');
 
 -- Default unit = the commodity's base-dimension unit at confidence 1.00.
 update public.commodities c
