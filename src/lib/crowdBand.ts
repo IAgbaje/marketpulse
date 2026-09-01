@@ -28,6 +28,24 @@ interface PriceAggregateRow {
   grade_caveat: boolean;
 }
 
+/**
+ * Picks the one bucket relevant to a specific market+month out of a
+ * commodity's bands, and collapses "no bucket exists yet" and "bucket
+ * exists but is below the privacy floor" into the same "empty" result —
+ * from the UI's point of view they're the same designed state (§7 stage 7):
+ * nothing to show, for a legitimate reason. Pure, so it's testable without
+ * a network call.
+ */
+export function matchCrowdBand(
+  bands: readonly CrowdBandRow[],
+  marketId: string,
+  periodMonth: string,
+): CrowdBandRow | "empty" {
+  const match = bands.find((b) => b.marketId === marketId && b.periodMonth === periodMonth);
+  if (!match || match.medianKobo === null) return "empty";
+  return match;
+}
+
 /** Every published (or below-floor) bucket for a commodity, newest month first. */
 export async function fetchCrowdBands(commodityId: string): Promise<CrowdBandRow[]> {
   const { data, error } = await supabase

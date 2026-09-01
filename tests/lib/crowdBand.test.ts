@@ -10,7 +10,7 @@ vi.mock("@/src/lib/supabase", () => ({
   },
 }));
 
-import { fetchCrowdBands } from "@/src/lib/crowdBand";
+import { fetchCrowdBands, matchCrowdBand, type CrowdBandRow } from "@/src/lib/crowdBand";
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -80,5 +80,48 @@ describe("fetchCrowdBands", () => {
   it("empty array when there are simply no buckets yet", async () => {
     order.mockResolvedValue({ data: [], error: null });
     expect(await fetchCrowdBands("rice_local")).toEqual([]);
+  });
+});
+
+describe("matchCrowdBand", () => {
+  const published: CrowdBandRow = {
+    marketId: "m1",
+    periodMonth: "2026-08-01",
+    distinctUserCount: 7,
+    p25Kobo: 280000n,
+    medianKobo: 300000n,
+    p75Kobo: 320000n,
+    gradeCaveat: false,
+  };
+  const belowFloor: CrowdBandRow = {
+    marketId: "m1",
+    periodMonth: "2026-07-01",
+    distinctUserCount: 2,
+    p25Kobo: null,
+    medianKobo: null,
+    p75Kobo: null,
+    gradeCaveat: false,
+  };
+
+  it("returns the matching published bucket", () => {
+    expect(matchCrowdBand([published], "m1", "2026-08-01")).toBe(published);
+  });
+
+  it("no bucket for this market/month at all -> empty", () => {
+    expect(matchCrowdBand([published], "m2", "2026-08-01")).toBe("empty");
+    expect(matchCrowdBand([published], "m1", "2026-09-01")).toBe("empty");
+  });
+
+  it("a bucket exists but is below the privacy floor -> empty (same as no bucket, by design)", () => {
+    expect(matchCrowdBand([belowFloor], "m1", "2026-07-01")).toBe("empty");
+  });
+
+  it("picks the right bucket out of several markets/months", () => {
+    expect(matchCrowdBand([published, belowFloor], "m1", "2026-07-01")).toBe("empty");
+    expect(matchCrowdBand([published, belowFloor], "m1", "2026-08-01")).toBe(published);
+  });
+
+  it("empty input -> empty", () => {
+    expect(matchCrowdBand([], "m1", "2026-08-01")).toBe("empty");
   });
 });

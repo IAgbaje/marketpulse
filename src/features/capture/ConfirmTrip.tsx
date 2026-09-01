@@ -4,6 +4,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db, getOpenDraft } from "../../lib/db.js";
 import { formatNaira, parseNairaToKobo } from "../../lib/money.js";
 import { commitTrip, getTripLines, mostRecentPriorLine, updateLine } from "../../lib/trips.js";
+import { fetchCrowdBands, matchCrowdBand, type CrowdBandRow } from "../../lib/crowdBand.js";
+import { monthStart } from "../../lib/budgets.js";
 import type { LocalLine } from "../../lib/db.js";
 
 /**
@@ -11,17 +13,22 @@ import type { LocalLine } from "../../lib/db.js";
  * editable in place. Outlier-flagged lines get a neutral "check this" prompt,
  * never an error/warning treatment (US-1.3 AC). No blocking modals.
  *
- * Crowd annotation ("Others paid…") intentionally renders nothing INLINE
- * here — that empty state is designed on purpose (screen 6's third
- * annotation variant). As of stage 4, each line links out to Commodity
- * Detail (screen 11) instead, which renders the crowd band's own honest
- * states (including "not enough shoppers yet") — showing it inline here too
- * would duplicate that state machine for no benefit at confirm time.
+ * Crowd annotation ("Others paid…") — as of stage 7 ("user-contributed
+ * aggregation... 'Others paid' annotations become live"), this is inline
+ * per line again, using screen 6's third designed annotation variant
+ * ("not enough shoppers yet") for real, not a stand-in. It loads
+ * independently of everything else on the screen (a crowd-fetch failure or
+ * slow network never blocks confirming and saving the trip itself) and
+ * still links to Commodity Detail for the fuller history.
  */
 export function ConfirmTrip({ userId }: { userId: string }) {
   const [, navigate] = useRouterLocation();
   const [tripId, setTripId] = useState<string | null>(null);
+  const [marketId, setMarketId] = useState<string | null>(null);
   const [lastPaid, setLastPaid] = useState<Record<string, LocalLine | undefined>>({});
+  const [crowdByCommodity, setCrowdByCommodity] = useState<
+    Record<string, CrowdBandRow | "empty" | "unavailable" | "loading">
+  >({});
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +40,7 @@ export function ConfirmTrip({ userId }: { userId: string }) {
         return;
       }
       setTripId(draft.id);
+      setMarketId(draft.marketId);
     })();
   }, [userId, navigate]);
 
@@ -54,6 +62,36 @@ export function ConfirmTrip({ userId }: { userId: string }) {
       setLastPaid(Object.fromEntries(entries));
     })();
   }, [lines, userId]);
+
+  useEffect(() => {
+    if (!marketId) return;
+    const commodityIds = [...new Set(lines.map((l) => l.commodityId))];
+    const unfetched = commodityIds.filter((id) => !(id in crowdByCommodity));
+    if (unfetched.length === 0) return;
+
+    setCrowdByCommodity((prev) => {
+      const next = { ...prev };
+      for (const id of unfetched) next[id] = "loading";
+      return next;
+    });
+
+    const month = monthStart();
+    void Promise.all(
+      unfetched.map(async (commodityId) => {
+        try {
+          const bands = await fetchCrowdBands(commodityId);
+          return [commodityId, matchCrowdBand(bands, marketId, month)] as const;
+        } catch {
+          return [commodityId, "unavailable" as const] as const;
+        }
+      }),
+    ).then((entries) => {
+      setCrowdByCommodity((prev) => ({ ...prev, ...Object.fromEntries(entries) }));
+    });
+    // crowdByCommodity intentionally omitted from deps: it's an accumulating
+    // cache keyed by commodityId, checked via `unfetched` above — including
+    // it here would re-trigger this effect on every fetch it just completed.
+  }, [lines, marketId]);
 
   const total = lines.reduce((sum, l) => sum + BigInt(l.paidPriceKobo), 0n);
 
@@ -130,6 +168,8 @@ export function ConfirmTrip({ userId }: { userId: string }) {
                 </p>
               )}
 
+              <CrowdAnnotation state={crowdByCommodity[line.commodityId]} />
+
               {line.outlierFlagged && !line.userConfirmed && (
                 <p>
                   Check this — this price looks unusual for you.{" "}
@@ -153,5 +193,31 @@ export function ConfirmTrip({ userId }: { userId: string }) {
         {committing ? "Saving…" : "Done"}
       </button>
     </main>
+  );
+}
+
+/**
+ * Screen 6's third annotation variant, rendered for real (§4 stage 7):
+ * "not enough shoppers yet" is a designed state here, not a placeholder —
+ * it's what most items will show for a long time on a cold-start product,
+ * and that's expected, not broken.
+ */
+function CrowdAnnotation({
+  state,
+}: {
+  state: CrowdBandRow | "empty" | "unavailable" | "loading" | undefined;
+}) {
+  if (state === undefined || state === "loading") return null;
+  if (state === "unavailable") return null; // never blocks confirming; silent is correct here
+  if (state === "empty") {
+    return <p>Not enough other shoppers here yet to say what&rsquo;s typical.</p>;
+  }
+  // p25/p75 are non-null whenever median is (recompute_bucket sets all three
+  // together or all NULL together, migration 20260831000001) — the "empty"
+  // branch above already filtered out medianKobo === null, so this is safe.
+  return (
+    <p>
+      Others here typically pay {formatNaira(state.p25Kobo!)}–{formatNaira(state.p75Kobo!)}.
+    </p>
   );
 }
