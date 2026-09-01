@@ -5,6 +5,7 @@ import { hasReferenceData, refreshReferenceData } from "./lib/reference-data.js"
 import { startSyncLoop } from "./lib/sync.js";
 import { CaptureChoice } from "./features/capture/CaptureChoice.js";
 import { ManualEntry } from "./features/capture/ManualEntry.js";
+import { PhotoCapture } from "./features/capture/PhotoCapture.js";
 import { ConfirmTrip } from "./features/capture/ConfirmTrip.js";
 import { AccountUpgrade } from "./features/account/AccountUpgrade.js";
 import { TripSummary } from "./features/trips/TripSummary.js";
@@ -82,6 +83,9 @@ export function App() {
     <Switch>
       <Route path="/capture/manual">
         <ManualEntry userId={state.userId} />
+      </Route>
+      <Route path="/capture/photo">
+        <PhotoCapture userId={state.userId} />
       </Route>
       <Route path="/capture/confirm">
         <ConfirmTrip userId={state.userId} />
