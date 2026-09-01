@@ -34,3 +34,18 @@ jobs:
 
       - name: Bundle size gate
         run: node scripts/check-bundle-size.mjs
+
+      - name: Supabase security-advisor lint (TR §8 item 2's second gate)
+        # No-ops with a warning until SUPABASE_DB_URL is set as a repo
+        # secret (Project Settings -> Database -> Connection string, URI)
+        # — a real credential, not something to invent or commit here.
+        # Once set, this runs the same linter behind the dashboard's
+        # security advisor against every migration in this PR/push.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::warning::SUPABASE_DB_URL secret not set — skipping the security-advisor lint gate. Add it in repo Settings > Secrets to enable."
+            exit 0
+          fi
+          npx supabase db lint --db-url "$SUPABASE_DB_URL" --fail-on error
