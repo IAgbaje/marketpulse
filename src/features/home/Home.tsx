@@ -110,6 +110,12 @@ export function Home({ userId }: { userId: string }) {
         </p>
       </section>
 
+      <section aria-label="Watchlist and reports">
+        <p>
+          <Link to="/watchlist">My watchlist</Link> · <Link to="/reports/weekly">Your week</Link>
+        </p>
+      </section>
+
       <p>
         <Link to="/account/upgrade">Back up your data</Link>
       </p>

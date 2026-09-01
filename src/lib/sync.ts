@@ -17,7 +17,7 @@
  */
 
 import { supabase } from "./supabase.js";
-import { db, type LocalBudget, type LocalLine, type LocalTrip } from "./db.js";
+import { db, type LocalBudget, type LocalLine, type LocalTrip, type LocalWatchlistItem } from "./db.js";
 
 async function pushTrips(trips: LocalTrip[]): Promise<Set<string>> {
   if (trips.length === 0) return new Set();
@@ -111,13 +111,40 @@ async function pushBudgets(budgets: LocalBudget[]): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id));
 }
 
+async function pushWatchlist(watches: LocalWatchlistItem[]): Promise<Set<string>> {
+  if (watches.length === 0) return new Set();
+
+  const rows = watches.map((w) => ({
+    id: w.id,
+    user_id: w.userId,
+    commodity_id: w.commodityId,
+    market_id: w.marketId,
+    threshold_kobo: w.thresholdKobo,
+    currency: w.currency,
+  }));
+
+  const { error } = await supabase
+    .from("watchlist")
+    .upsert(rows, { onConflict: "user_id,commodity_id,market_id" });
+  if (error) {
+    console.error("sync: watchlist push failed", error);
+    return new Set();
+  }
+  return new Set(rows.map((r) => r.id));
+}
+
 /**
  * One sync pass: committed trips only (drafts stay local-only, never synced —
  * they are not yet a real observation). Trips push before their lines, so a
- * line's foreign key is always satisfiable server-side. Budgets are
- * independent of trips/lines and sync alongside them.
+ * line's foreign key is always satisfiable server-side. Budgets and
+ * watchlist entries are independent of trips/lines and sync alongside them.
  */
-export async function syncOnce(): Promise<{ tripsSynced: number; linesSynced: number; budgetsSynced: number }> {
+export async function syncOnce(): Promise<{
+  tripsSynced: number;
+  linesSynced: number;
+  budgetsSynced: number;
+  watchesSynced: number;
+}> {
   const pendingTrips = await db.trips
     .where("syncStatus")
     .equals("pending")
@@ -157,10 +184,19 @@ export async function syncOnce(): Promise<{ tripsSynced: number; linesSynced: nu
     );
   }
 
+  const pendingWatches = await db.watchlist.where("syncStatus").equals("pending").toArray();
+  const syncedWatchIds = await pushWatchlist(pendingWatches);
+  if (syncedWatchIds.size > 0) {
+    await db.watchlist.bulkUpdate(
+      [...syncedWatchIds].map((id) => ({ key: id, changes: { syncStatus: "synced" as const } })),
+    );
+  }
+
   return {
     tripsSynced: syncedTripIds.size,
     linesSynced: syncedLineIds.size,
     budgetsSynced: syncedBudgetIds.size,
+    watchesSynced: syncedWatchIds.size,
   };
 }
 

@@ -134,6 +134,27 @@ export interface LocalBudget {
   syncStatus: SyncStatus;
 }
 
+/**
+ * Mirrors `watchlist` (Stage 9, My Watchlist). Deletion is LOCAL-ONLY for
+ * now, same known limitation as `deleteLine` in trips.ts — removing a watch
+ * removes it from this device but not (yet) the server copy. A real fix is
+ * a tombstone/soft-delete convention applied consistently across every
+ * synced table, which is a bigger, separate change than this feature.
+ */
+export interface LocalWatchlistItem {
+  id: string;
+  userId: string;
+  commodityId: string;
+  /** null = any market. */
+  marketId: string | null;
+  /** null = just tracking, no alert threshold. Integer kobo, string for the
+   * same IndexedDB-can't-index-BigInt reason as everywhere else. */
+  thresholdKobo: string | null;
+  currency: string;
+  clientUpdatedAt: string;
+  syncStatus: SyncStatus;
+}
+
 const db = new Dexie("marketpulse") as Dexie & {
   trips: EntityTable<LocalTrip, "id">;
   lines: EntityTable<LocalLine, "id">;
@@ -142,6 +163,7 @@ const db = new Dexie("marketpulse") as Dexie & {
   units: EntityTable<LocalUnit, "id">;
   locations: EntityTable<LocalLocation, "id">;
   budgets: EntityTable<LocalBudget, "id">;
+  watchlist: EntityTable<LocalWatchlistItem, "id">;
 };
 
 // IndexedDB cannot index booleans, so `isDraft` is not an index — draft
@@ -186,6 +208,18 @@ db.version(3).stores({
   units: "id, commodityId, unitCode",
   locations: "id, parentId, level",
   budgets: "id, userId, effectiveFrom, syncStatus",
+});
+
+// v4: adds watchlist (Stage 9). Purely additive.
+db.version(4).stores({
+  trips: "id, userId, tripDate, syncStatus",
+  lines: "id, tripId, userId, commodityId, syncStatus",
+  commodities: "id, category, substituteGroup, provisional",
+  aliases: "alias, commodityId",
+  units: "id, commodityId, unitCode",
+  locations: "id, parentId, level",
+  budgets: "id, userId, effectiveFrom, syncStatus",
+  watchlist: "id, userId, commodityId, syncStatus",
 });
 
 export { db };

@@ -17,6 +17,8 @@ import { MarketsList } from "./features/markets/MarketsList.js";
 import { MarketDetail } from "./features/markets/MarketDetail.js";
 import { PriceComparison } from "./features/compare/PriceComparison.js";
 import { BasketComparison } from "./features/compare/BasketComparison.js";
+import { MyWatchlist } from "./features/watchlist/MyWatchlist.js";
+import { WeeklyReport } from "./features/reports/WeeklyReport.js";
 
 type BootState =
   | { status: "loading" }
@@ -126,6 +128,12 @@ export function App() {
       </Route>
       <Route path="/compare/basket">
         <BasketComparison userId={state.userId} />
+      </Route>
+      <Route path="/watchlist">
+        <MyWatchlist userId={state.userId} />
+      </Route>
+      <Route path="/reports/weekly">
+        <WeeklyReport userId={state.userId} />
       </Route>
       <Route path="/">
         <Home userId={state.userId} />
