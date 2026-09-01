@@ -113,6 +113,27 @@ export interface LocalLocation {
   marketType: "open_market" | "supermarket" | "unknown" | null;
 }
 
+/**
+ * Mirrors `user_budgets` (Stage 5, Budget Setup/Analysis). Local-first like
+ * everything else here — set once a month, low-frequency, but still written
+ * through Dexie first and synced, not called straight to Supabase, for the
+ * same offline-durability reason as trips/lines (§5).
+ */
+export interface LocalBudget {
+  id: string;
+  userId: string;
+  /** Integer kobo, string for the same IndexedDB-can't-index-BigInt reason
+   * as LocalLine's money fields. */
+  amountKobo: string;
+  currency: string;
+  periodKind: "monthly";
+  /** ISO date, first of the month this budget takes effect from. */
+  effectiveFrom: string;
+  source: "derived_from_trip" | "manual";
+  clientUpdatedAt: string;
+  syncStatus: SyncStatus;
+}
+
 const db = new Dexie("marketpulse") as Dexie & {
   trips: EntityTable<LocalTrip, "id">;
   lines: EntityTable<LocalLine, "id">;
@@ -120,6 +141,7 @@ const db = new Dexie("marketpulse") as Dexie & {
   aliases: EntityTable<LocalAlias, "alias">;
   units: EntityTable<LocalUnit, "id">;
   locations: EntityTable<LocalLocation, "id">;
+  budgets: EntityTable<LocalBudget, "id">;
 };
 
 // IndexedDB cannot index booleans, so `isDraft` is not an index — draft
@@ -153,6 +175,18 @@ db.version(2)
     await tx.table("units").clear();
     await tx.table("locations").clear();
   });
+
+// v3: adds budgets (Stage 5). Purely additive — no upgrade() needed, Dexie
+// creates the new table empty.
+db.version(3).stores({
+  trips: "id, userId, tripDate, syncStatus",
+  lines: "id, tripId, userId, commodityId, syncStatus",
+  commodities: "id, category, substituteGroup, provisional",
+  aliases: "alias, commodityId",
+  units: "id, commodityId, unitCode",
+  locations: "id, parentId, level",
+  budgets: "id, userId, effectiveFrom, syncStatus",
+});
 
 export { db };
 

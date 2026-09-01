@@ -6,12 +6,12 @@ import { getTripLines, listRecentTrips } from "../../lib/trips.js";
 import type { LocalLocation, LocalTrip } from "../../lib/db.js";
 
 /**
- * Screen 8 — Home (§4 stage 4, PARTIAL — see build order note). Its full
- * spec depends on `user_budgets` (stage 5, not built) and crowd "movers"
- * (stage 7+, needs the ≥5-distinct-user privacy floor this pre-launch app
- * has no real users to clear yet). Both are shown as designed empty states
- * below, not silently omitted — what Home CAN do at this stage is the
- * recent-trips list, which is real, local, and available from trip 1.
+ * Screen 8 — Home (§4 stage 4, PARTIAL — see build order note). Budget is
+ * real as of stage 5 (links to Budget Analysis, which handles its own
+ * no-budget-set-yet state). Crowd "movers" still isn't — that needs the
+ * >= 5-distinct-user privacy floor (§7) this pre-launch app has no real
+ * user density to clear yet, and stage 7+'s crowd-contribution feature
+ * isn't built. Shown as a designed empty state below, not silently omitted.
  */
 interface TripRow {
   trip: LocalTrip;
@@ -72,7 +72,9 @@ export function Home({ userId }: { userId: string }) {
 
       <section aria-label="Budget">
         <h2>Budget</h2>
-        <p>Not set up yet — budgets are coming in a later update.</p>
+        <p>
+          <Link to="/budget">See how this month is going</Link>
+        </p>
       </section>
 
       <section aria-label="Recent shops">

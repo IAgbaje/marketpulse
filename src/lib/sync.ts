@@ -17,7 +17,7 @@
  */
 
 import { supabase } from "./supabase.js";
-import { db, type LocalLine, type LocalTrip } from "./db.js";
+import { db, type LocalBudget, type LocalLine, type LocalTrip } from "./db.js";
 
 async function pushTrips(trips: LocalTrip[]): Promise<Set<string>> {
   if (trips.length === 0) return new Set();
@@ -88,12 +88,36 @@ async function pushLines(lines: LocalLine[]): Promise<Set<string>> {
   return new Set(rows.map((r) => r.id));
 }
 
+async function pushBudgets(budgets: LocalBudget[]): Promise<Set<string>> {
+  if (budgets.length === 0) return new Set();
+
+  const rows = budgets.map((b) => ({
+    id: b.id,
+    user_id: b.userId,
+    amount_kobo: b.amountKobo,
+    currency: b.currency,
+    period_kind: b.periodKind,
+    effective_from: b.effectiveFrom,
+    source: b.source,
+  }));
+
+  const { error } = await supabase
+    .from("user_budgets")
+    .upsert(rows, { onConflict: "user_id,effective_from" });
+  if (error) {
+    console.error("sync: budget push failed", error);
+    return new Set();
+  }
+  return new Set(rows.map((r) => r.id));
+}
+
 /**
  * One sync pass: committed trips only (drafts stay local-only, never synced —
  * they are not yet a real observation). Trips push before their lines, so a
- * line's foreign key is always satisfiable server-side.
+ * line's foreign key is always satisfiable server-side. Budgets are
+ * independent of trips/lines and sync alongside them.
  */
-export async function syncOnce(): Promise<{ tripsSynced: number; linesSynced: number }> {
+export async function syncOnce(): Promise<{ tripsSynced: number; linesSynced: number; budgetsSynced: number }> {
   const pendingTrips = await db.trips
     .where("syncStatus")
     .equals("pending")
@@ -125,7 +149,19 @@ export async function syncOnce(): Promise<{ tripsSynced: number; linesSynced: nu
     );
   }
 
-  return { tripsSynced: syncedTripIds.size, linesSynced: syncedLineIds.size };
+  const pendingBudgets = await db.budgets.where("syncStatus").equals("pending").toArray();
+  const syncedBudgetIds = await pushBudgets(pendingBudgets);
+  if (syncedBudgetIds.size > 0) {
+    await db.budgets.bulkUpdate(
+      [...syncedBudgetIds].map((id) => ({ key: id, changes: { syncStatus: "synced" as const } })),
+    );
+  }
+
+  return {
+    tripsSynced: syncedTripIds.size,
+    linesSynced: syncedLineIds.size,
+    budgetsSynced: syncedBudgetIds.size,
+  };
 }
 
 const FALLBACK_INTERVAL_MS = 60_000;

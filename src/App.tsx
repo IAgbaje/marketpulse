@@ -10,6 +10,8 @@ import { AccountUpgrade } from "./features/account/AccountUpgrade.js";
 import { TripSummary } from "./features/trips/TripSummary.js";
 import { Home } from "./features/home/Home.js";
 import { CommodityDetail } from "./features/commodity/CommodityDetail.js";
+import { BudgetSetup } from "./features/budget/BudgetSetup.js";
+import { BudgetAnalysis } from "./features/budget/BudgetAnalysis.js";
 
 type BootState =
   | { status: "loading" }
@@ -98,6 +100,12 @@ export function App() {
       </Route>
       <Route path="/commodity/:id">
         {(params) => <CommodityDetail commodityId={params.id} userId={state.userId} />}
+      </Route>
+      <Route path="/budget/setup">
+        <BudgetSetup userId={state.userId} />
+      </Route>
+      <Route path="/budget">
+        <BudgetAnalysis userId={state.userId} />
       </Route>
       <Route path="/">
         <Home userId={state.userId} />
