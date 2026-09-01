@@ -1,0 +1,23 @@
+{
+  "version": "0.1.0",
+  "note": "Blocking item 4 (Technical Requirements §8.1, Handover §7.2). Powers the substitution narrative sentence only — never a fifth additive ₦ component. Groups are DISJOINT: a commodity belongs to at most one group, so `detectSubstitutions` pairing is unambiguous. Every id here must exist in commodities.json and carry the matching `substituteGroup`.",
+  "groups": [
+    { "groupId": "rice_type", "label": "Rice", "commodityIds": ["rice_local", "rice_foreign", "rice_ofada"] },
+    { "groupId": "beans_type", "label": "Beans", "commodityIds": ["beans_brown", "beans_white", "beans_oloyin"] },
+    { "groupId": "swallow_flour", "label": "Swallow / staple flour", "commodityIds": ["garri_white", "garri_yellow", "garri_ijebu", "semovita", "poundo_yam_flour", "wheat_meal", "yam_flour", "plantain_flour"] },
+    { "groupId": "yam_group", "label": "Yam & cocoyam", "commodityIds": ["yam_tuber", "water_yam", "cocoyam"] },
+    { "groupId": "potato_group", "label": "Potato", "commodityIds": ["sweet_potato", "irish_potato"] },
+    { "groupId": "plantain_group", "label": "Plantain", "commodityIds": ["plantain_ripe", "plantain_unripe"] },
+    { "groupId": "tomato_base", "label": "Tomato base", "commodityIds": ["tomato_fresh", "tomato_paste", "tomato_tinned"] },
+    { "groupId": "pepper_heat", "label": "Pepper", "commodityIds": ["pepper_rodo", "pepper_tatashe", "pepper_shombo", "pepper_dried_ground"] },
+    { "groupId": "cooking_oil", "label": "Cooking oil", "commodityIds": ["palm_oil", "vegetable_oil", "groundnut_oil"] },
+    { "groupId": "animal_protein", "label": "Animal protein", "commodityIds": ["fish_fresh_tilapia", "fish_fresh_catfish", "fish_frozen_titus", "fish_dried", "stockfish", "chicken_frozen", "chicken_live", "beef", "goat_meat"] },
+    { "groupId": "milk_type", "label": "Milk", "commodityIds": ["milk_powder", "milk_evaporated", "milk_liquid"] },
+    { "groupId": "bread_type", "label": "Bread", "commodityIds": ["bread_sliced", "bread_agege"] },
+    { "groupId": "pasta_type", "label": "Pasta & noodles", "commodityIds": ["spaghetti", "macaroni", "noodles_instant"] },
+    { "groupId": "sweetener", "label": "Sweetener", "commodityIds": ["sugar_granulated", "honey"] },
+    { "groupId": "seasoning", "label": "Seasoning", "commodityIds": ["seasoning_cube", "seasoning_powder"] },
+    { "groupId": "soup_greens", "label": "Soup greens", "commodityIds": ["ugu_leaf", "spinach_green", "waterleaf"] },
+    { "groupId": "breakfast_cereal", "label": "Breakfast cereal", "commodityIds": ["pap_akamu", "oats"] }
+  ]
+}

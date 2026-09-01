@@ -18,6 +18,9 @@ export function CaptureChoice() {
         </button>
       </div>
       <p>Takes about a minute for a typical shop.</p>
+      <p>
+        <Link to="/account/upgrade">Back up your data</Link>
+      </p>
     </main>
   );
 }

@@ -22,7 +22,7 @@ function nowIso(): string {
  */
 export async function getOrCreateDraft(
   userId: string,
-  locationId: string | null,
+  marketId: string | null,
 ): Promise<LocalTrip> {
   const existing = await getOpenDraft(userId);
   if (existing) return existing;
@@ -30,10 +30,10 @@ export async function getOrCreateDraft(
   const trip: LocalTrip = {
     id: newId(),
     userId,
-    locationId,
+    marketId,
     tripDate: new Date().toISOString().slice(0, 10),
     currency: "NGN",
-    captureMethod: "same_day", // provisional; finalised in commitTrip
+    captureMethod: "same_day", // provisional; the server trigger sets it authoritatively
     clientUpdatedAt: nowIso(),
     syncStatus: "pending" as SyncStatus,
     isDraft: true,
@@ -184,12 +184,12 @@ export async function commitTrip(tripId: string): Promise<void> {
  */
 export async function findLastTripAtLocation(
   userId: string,
-  locationId: string,
+  marketId: string,
 ): Promise<LocalTrip | undefined> {
   const trips = await db.trips
     .where("userId")
     .equals(userId)
-    .filter((t) => !t.isDraft && t.locationId === locationId)
+    .filter((t) => !t.isDraft && t.marketId === marketId)
     .sortBy("clientUpdatedAt");
   return trips.at(-1);
 }

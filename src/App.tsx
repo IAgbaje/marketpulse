@@ -6,6 +6,7 @@ import { startSyncLoop } from "./lib/sync.js";
 import { CaptureChoice } from "./features/capture/CaptureChoice.js";
 import { ManualEntry } from "./features/capture/ManualEntry.js";
 import { ConfirmTrip } from "./features/capture/ConfirmTrip.js";
+import { AccountUpgrade } from "./features/account/AccountUpgrade.js";
 
 type BootState =
   | { status: "loading" }
@@ -83,6 +84,9 @@ export function App() {
       <Route path="/capture">
         <CaptureChoice />
       </Route>
+      <Route path="/account/upgrade">
+        <AccountUpgrade />
+      </Route>
       <Route path="/">
         <main>
           <h1>MarketPulse</h1>
@@ -90,6 +94,9 @@ export function App() {
           <a href="/capture">
             <button type="button">Log a shop</button>
           </a>
+          <p>
+            <a href="/account/upgrade">Back up your data</a>
+          </p>
         </main>
       </Route>
     </Switch>

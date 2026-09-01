@@ -83,7 +83,7 @@ export function ConfirmTrip({ userId }: { userId: string }) {
 
           return (
             <li key={line.id} data-outlier={line.outlierFlagged}>
-              <strong>{commodity?.name ?? line.rawText ?? "Unknown item"}</strong>
+              <strong>{commodity?.canonicalName ?? line.rawText ?? "Unknown item"}</strong>
 
               <label>
                 Quantity
@@ -100,7 +100,7 @@ export function ConfirmTrip({ userId }: { userId: string }) {
                     }
                   }}
                 />
-                {unit?.unitName}
+                {unit?.unitCode}
               </label>
 
               <label>
@@ -120,7 +120,7 @@ export function ConfirmTrip({ userId }: { userId: string }) {
               {prior !== undefined && (
                 <p>
                   You paid {formatNaira(BigInt(prior.paidPriceKobo))} for {prior.quantity}{" "}
-                  {units.find((u) => u.id === prior.unitId)?.unitName} last time
+                  {units.find((u) => u.id === prior.unitId)?.unitCode} last time
                 </p>
               )}
 

@@ -11,6 +11,7 @@ import {
   getTripLines,
   repeatLastShop,
 } from "../../lib/trips.js";
+import { getOpenDraft } from "../../lib/db.js";
 import type { LocalLine } from "../../lib/db.js";
 
 /**
@@ -22,17 +23,31 @@ import type { LocalLine } from "../../lib/db.js";
  * No dedicated location-setup screen yet (§15.3 screen 2) — the market
  * picker here is a stand-in scoped for stage 2 capture, not the onboarding
  * flow. Flagged, not silently skipped.
+ *
+ * Offline-durability requirement (§5): every line write already lands in
+ * Dexie immediately (see `addLine`) — a force-quit mid-capture never loses a
+ * committed line. What this component adds is the other half of that
+ * guarantee: on mount (including after a reload), it checks for an already
+ * open draft FIRST, before ever showing the market picker, so a resumed
+ * session lands the user back on their in-progress list — not a "pick a
+ * market again" screen in front of data that was never actually lost.
  */
 export function ManualEntry({ userId }: { userId: string }) {
   const [, navigate] = useRouterLocation();
 
   const commodities = useLiveQuery(() => db.commodities.toArray(), []) ?? [];
+  const aliases = useLiveQuery(() => db.aliases.toArray(), []) ?? [];
   const units = useLiveQuery(() => db.units.toArray(), []) ?? [];
   const markets = useLiveQuery(
     () => db.locations.where("level").equals("market").toArray(),
     [],
   ) ?? [];
 
+  // 'checking' guards against a flash of the market picker while we look for
+  // an already open draft — the picker must never render before that answer
+  // is known, or a resumed session would visibly (if briefly) look like a
+  // fresh one.
+  const [bootStatus, setBootStatus] = useState<"checking" | "ready">("checking");
   const [locationId, setLocationId] = useState<string>("");
   const [tripId, setTripId] = useState<string | null>(null);
   const [commodityQuery, setCommodityQuery] = useState("");
@@ -49,8 +64,27 @@ export function ManualEntry({ userId }: { userId: string }) {
     [tripId],
   ) ?? [];
 
+  // Resume check — runs once per mount, before anything else.
   useEffect(() => {
-    if (!locationId) return;
+    let cancelled = false;
+    void (async () => {
+      const existingDraft = await getOpenDraft(userId);
+      if (cancelled) return;
+      if (existingDraft) {
+        setTripId(existingDraft.id);
+        if (existingDraft.marketId) setLocationId(existingDraft.marketId);
+      }
+      setBootStatus("ready");
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // New-draft creation — only once boot-check has run and found nothing to
+  // resume, and the user has since picked a market.
+  useEffect(() => {
+    if (bootStatus !== "ready" || !locationId || tripId) return;
     void (async () => {
       const draft = await getOrCreateDraft(userId, locationId);
       setTripId(draft.id);
@@ -61,16 +95,23 @@ export function ManualEntry({ userId }: { userId: string }) {
         if (lastTrip) setHasRepeatOffer(lastTrip.id);
       }
     })();
-  }, [locationId, userId]);
+  }, [bootStatus, locationId, tripId, userId]);
 
   const commodityMatches = useMemo(() => {
     if (commodityQuery.length < 2) return [];
     const q = commodityQuery.toLowerCase();
-    return commodities.filter((c) => c.name.toLowerCase().includes(q)).slice(0, 8);
-  }, [commodityQuery, commodities]);
+    const aliasCommodityIds = new Set(
+      aliases.filter((a) => a.alias.toLowerCase().includes(q)).map((a) => a.commodityId),
+    );
+    return commodities
+      .filter((c) => c.canonicalName.toLowerCase().includes(q) || aliasCommodityIds.has(c.id))
+      .slice(0, 8);
+  }, [commodityQuery, commodities, aliases]);
 
+  // A unit with commodityId === null is commodity-independent (server '*'
+  // scope, e.g. a generic 'piece') and applies to every commodity.
   const unitsForCommodity = useMemo(
-    () => units.filter((u) => u.commodityId === selectedCommodityId),
+    () => units.filter((u) => u.commodityId === selectedCommodityId || u.commodityId === null),
     [units, selectedCommodityId],
   );
 
@@ -82,10 +123,11 @@ export function ManualEntry({ userId }: { userId: string }) {
   function selectCommodity(id: string, name: string) {
     setSelectedCommodityId(id);
     setCommodityQuery(name);
-    const defaultUnit = units.find(
-      (u) => u.commodityId === id && commodities.find((c) => c.id === id)?.defaultUnitId === u.id,
-    );
-    setUnitId(defaultUnit?.id ?? units.find((u) => u.commodityId === id)?.id ?? "");
+    // No server-side "default unit" concept anymore — prefer a unit scoped
+    // to this commodity over a commodity-independent ('*') one.
+    const firstUnit =
+      units.find((u) => u.commodityId === id) ?? units.find((u) => u.commodityId === null);
+    setUnitId(firstUnit?.id ?? "");
   }
 
   async function handleAddLine() {
@@ -140,6 +182,10 @@ export function ManualEntry({ userId }: { userId: string }) {
     navigate("/capture/confirm");
   }
 
+  if (bootStatus === "checking") {
+    return <main aria-busy="true">Checking for an in-progress shop…</main>;
+  }
+
   if (!locationId) {
     return (
       <main>
@@ -177,8 +223,8 @@ export function ManualEntry({ userId }: { userId: string }) {
           const commodity = commodities.find((c) => c.id === line.commodityId);
           return (
             <li key={line.id}>
-              {commodity?.name ?? line.rawText ?? "Unknown item"} — {line.quantity}{" "}
-              {units.find((u) => u.id === line.unitId)?.unitName} —{" "}
+              {commodity?.canonicalName ?? line.rawText ?? "Unknown item"} — {line.quantity}{" "}
+              {units.find((u) => u.id === line.unitId)?.unitCode} —{" "}
               {formatNaira(BigInt(line.paidPriceKobo))}
               <button type="button" onClick={() => void deleteLine(line.id)} aria-label="Remove">
                 ✕
@@ -214,8 +260,8 @@ export function ManualEntry({ userId }: { userId: string }) {
           <ul>
             {commodityMatches.map((c) => (
               <li key={c.id}>
-                <button type="button" onClick={() => selectCommodity(c.id, c.name)}>
-                  {c.name}
+                <button type="button" onClick={() => selectCommodity(c.id, c.canonicalName)}>
+                  {c.canonicalName}
                 </button>
               </li>
             ))}
@@ -240,7 +286,7 @@ export function ManualEntry({ userId }: { userId: string }) {
             <option value="">—</option>
             {unitsForCommodity.map((u) => (
               <option key={u.id} value={u.id}>
-                {u.unitName}
+                {u.unitCode}
               </option>
             ))}
           </select>

@@ -7,6 +7,13 @@
  * the case where the browser never fires `online` reliably). Every call is
  * safe to run concurrently with itself — Dexie's per-record queries and
  * Supabase upserts make a duplicate pass a no-op, not a duplicate write.
+ *
+ * Both `shopping_trips` and `purchase_lines` let the client provide the row's
+ * `id` explicitly (server default is only a fallback), so the local
+ * client-generated UUID is reused as the server PK directly, and doubles as
+ * the row's `client_trip_id` / `client_line_id` — the columns the server's
+ * unique constraints key retry-idempotency on (§7). A trip must land before
+ * its lines so the lines' `trip_id` FK is always satisfiable.
  */
 
 import { supabase } from "./supabase.js";
@@ -15,51 +22,70 @@ import { db, type LocalLine, type LocalTrip } from "./db.js";
 async function pushTrips(trips: LocalTrip[]): Promise<Set<string>> {
   if (trips.length === 0) return new Set();
 
-  const rows = trips.map((t) => ({
-    id: t.id,
-    user_id: t.userId,
-    location_id: t.locationId,
-    trip_date: t.tripDate,
-    currency: t.currency,
-    capture_method: t.captureMethod,
-    client_updated_at: t.clientUpdatedAt,
-  }));
+  const rows = trips
+    .filter((t) => t.marketId !== null)
+    .map((t) => ({
+      id: t.id,
+      client_trip_id: t.id,
+      user_id: t.userId,
+      market_id: t.marketId,
+      trip_date: t.tripDate,
+      currency: t.currency,
+      capture_method: t.captureMethod,
+      local_edited_at: t.clientUpdatedAt,
+    }));
+  if (rows.length === 0) return new Set();
 
-  const { error } = await supabase.from("shopping_trips").upsert(rows, { onConflict: "id" });
+  const { error } = await supabase
+    .from("shopping_trips")
+    .upsert(rows, { onConflict: "user_id,client_trip_id" });
   if (error) {
     console.error("sync: trip push failed", error);
     return new Set();
   }
-  return new Set(trips.map((t) => t.id));
+  return new Set(rows.map((r) => r.id));
 }
 
 async function pushLines(lines: LocalLine[]): Promise<Set<string>> {
   if (lines.length === 0) return new Set();
 
-  const rows = lines.map((l) => ({
-    id: l.id,
-    trip_id: l.tripId,
-    user_id: l.userId,
-    commodity_id: l.commodityId,
-    unit_id: l.unitId,
-    paid_price_kobo: l.paidPriceKobo,
-    currency: l.currency,
-    quantity: l.quantity,
-    qty_in_base_unit: l.qtyInBaseUnit,
-    purchase_form: l.purchaseForm,
-    unit_price_normalized: l.unitPriceNormalized,
-    raw_text: l.rawText,
-    mapping_confidence: l.mappingConfidence,
-    user_confirmed: l.userConfirmed,
-    outlier_flagged: l.outlierFlagged,
-  }));
+  const unitIds = [...new Set(lines.map((l) => l.unitId))];
+  const units = await db.units.bulkGet(unitIds);
+  const unitCodeById = new Map(units.filter((u) => u !== undefined).map((u) => [u!.id, u!.unitCode]));
 
-  const { error } = await supabase.from("purchase_lines").upsert(rows, { onConflict: "id" });
+  const rows = lines
+    .map((l) => {
+      const unitCode = unitCodeById.get(l.unitId);
+      if (unitCode === undefined) {
+        console.error(`sync: unknown unit ${l.unitId} for line ${l.id}, skipping`);
+        return null;
+      }
+      return {
+        id: l.id,
+        client_line_id: l.id,
+        trip_id: l.tripId,
+        commodity_id: l.commodityId,
+        unit_code: unitCode,
+        qty_entered: l.quantity,
+        qty_in_base_unit: l.qtyInBaseUnit,
+        paid_price_kobo: l.paidPriceKobo,
+        currency: l.currency,
+        purchase_form: l.purchaseForm,
+        flagged_outlier: l.outlierFlagged,
+        outlier_confirmed: l.outlierFlagged ? l.userConfirmed : null,
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+  if (rows.length === 0) return new Set();
+
+  const { error } = await supabase
+    .from("purchase_lines")
+    .upsert(rows, { onConflict: "trip_id,client_line_id" });
   if (error) {
     console.error("sync: line push failed", error);
     return new Set();
   }
-  return new Set(lines.map((l) => l.id));
+  return new Set(rows.map((r) => r.id));
 }
 
 /**
