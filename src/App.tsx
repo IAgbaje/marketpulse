@@ -13,6 +13,10 @@ import { Home } from "./features/home/Home.js";
 import { CommodityDetail } from "./features/commodity/CommodityDetail.js";
 import { BudgetSetup } from "./features/budget/BudgetSetup.js";
 import { BudgetAnalysis } from "./features/budget/BudgetAnalysis.js";
+import { MarketsList } from "./features/markets/MarketsList.js";
+import { MarketDetail } from "./features/markets/MarketDetail.js";
+import { PriceComparison } from "./features/compare/PriceComparison.js";
+import { BasketComparison } from "./features/compare/BasketComparison.js";
 
 type BootState =
   | { status: "loading" }
@@ -110,6 +114,18 @@ export function App() {
       </Route>
       <Route path="/budget">
         <BudgetAnalysis userId={state.userId} />
+      </Route>
+      <Route path="/map/market/:id">
+        {(params) => <MarketDetail marketId={params.id} />}
+      </Route>
+      <Route path="/map">
+        <MarketsList />
+      </Route>
+      <Route path="/compare/location/:commodityId">
+        {(params) => <PriceComparison commodityId={params.commodityId} />}
+      </Route>
+      <Route path="/compare/basket">
+        <BasketComparison userId={state.userId} />
       </Route>
       <Route path="/">
         <Home userId={state.userId} />

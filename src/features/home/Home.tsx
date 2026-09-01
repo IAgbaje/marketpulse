@@ -102,6 +102,14 @@ export function Home({ userId }: { userId: string }) {
         <p>Not enough shoppers on MarketPulse yet to show crowd price trends.</p>
       </section>
 
+      <section aria-label="Markets">
+        <h2>Markets</h2>
+        <p>
+          <Link to="/map">Browse markets</Link> ·{" "}
+          <Link to="/compare/basket">Compare your last basket</Link>
+        </p>
+      </section>
+
       <p>
         <Link to="/account/upgrade">Back up your data</Link>
       </p>

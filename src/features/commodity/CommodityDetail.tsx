@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation as useRouterLocation } from "wouter";
+import { Link, useLocation as useRouterLocation } from "wouter";
 import { db } from "../../lib/db.js";
 import { formatNaira } from "../../lib/money.js";
 import { personalPurchaseHistory } from "../../lib/trips.js";
@@ -151,6 +151,9 @@ export function CommodityDetail({ commodityId, userId }: { commodityId: string; 
             ))}
           </ul>
         )}
+        <p>
+          <Link to={`/compare/location/${commodityId}`}>Compare markets for this item</Link>
+        </p>
       </section>
     </main>
   );
