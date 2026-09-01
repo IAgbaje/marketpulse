@@ -7,6 +7,9 @@ import { CaptureChoice } from "./features/capture/CaptureChoice.js";
 import { ManualEntry } from "./features/capture/ManualEntry.js";
 import { ConfirmTrip } from "./features/capture/ConfirmTrip.js";
 import { AccountUpgrade } from "./features/account/AccountUpgrade.js";
+import { TripSummary } from "./features/trips/TripSummary.js";
+import { Home } from "./features/home/Home.js";
+import { CommodityDetail } from "./features/commodity/CommodityDetail.js";
 
 type BootState =
   | { status: "loading" }
@@ -87,17 +90,17 @@ export function App() {
       <Route path="/account/upgrade">
         <AccountUpgrade />
       </Route>
+      <Route path="/trips/:id/summary">
+        {(params) => <TripSummary tripId={params.id} userId={state.userId} />}
+      </Route>
+      <Route path="/home">
+        <Home userId={state.userId} />
+      </Route>
+      <Route path="/commodity/:id">
+        {(params) => <CommodityDetail commodityId={params.id} userId={state.userId} />}
+      </Route>
       <Route path="/">
-        <main>
-          <h1>MarketPulse</h1>
-          <p>Session ready.</p>
-          <a href="/capture">
-            <button type="button">Log a shop</button>
-          </a>
-          <p>
-            <a href="/account/upgrade">Back up your data</a>
-          </p>
-        </main>
+        <Home userId={state.userId} />
       </Route>
     </Switch>
   );

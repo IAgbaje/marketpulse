@@ -194,6 +194,85 @@ export async function findLastTripAtLocation(
   return trips.at(-1);
 }
 
+/**
+ * The committed trip immediately before `excludeTripId` at the same market —
+ * Trip Summary's "prior comparable trip" (§4 stage 4, screen 7). Unlike
+ * `findLastTripAtLocation` (used for repeat-last-shop, before the current
+ * trip exists), this must exclude the trip just committed, or the "most
+ * recent trip at this market" would just be itself.
+ */
+export async function findPriorTripAtLocation(
+  userId: string,
+  marketId: string,
+  excludeTripId: string,
+): Promise<LocalTrip | undefined> {
+  const trips = await db.trips
+    .where("userId")
+    .equals(userId)
+    .filter((t) => !t.isDraft && t.marketId === marketId && t.id !== excludeTripId)
+    .sortBy("clientUpdatedAt");
+  return trips.at(-1);
+}
+
+/**
+ * Every one of the user's own lines for a commodity, newest first —
+ * Commodity Detail's personal time series (§4 stage 4, screen 11). Local
+ * only; unlike the crowd band this needs no network and no privacy floor —
+ * it's the user's own history.
+ */
+export async function personalPurchaseHistory(
+  userId: string,
+  commodityId: string,
+  limit = 24,
+): Promise<LocalLine[]> {
+  return recentLines(userId, commodityId, limit);
+}
+
+/**
+ * The user's most recent COMMITTED trips, newest first — Home's trip list
+ * (§4 stage 4, screen 8). Drafts are deliberately excluded: an in-progress
+ * shop is not "recent history" yet, it's still being captured.
+ */
+export async function listRecentTrips(userId: string, limit = 10): Promise<LocalTrip[]> {
+  const trips = await db.trips
+    .where("userId")
+    .equals(userId)
+    .filter((t) => !t.isDraft)
+    .sortBy("clientUpdatedAt");
+  return trips.slice(-limit).reverse();
+}
+
+/**
+ * Aggregates a trip's lines to one row per commodity — exactly the shape
+ * `decompose()` requires (it throws on a duplicate commodityId, by design,
+ * so a trip with two lines of the same item must be summed before calling
+ * it). Integer kobo/base-unit sums throughout, no floats.
+ */
+export function aggregateLinesByCommodity(
+  lines: readonly LocalLine[],
+): { commodityId: string; costKobo: bigint; qtyBaseUnit: bigint }[] {
+  const totals = new Map<string, { costKobo: bigint; qtyBaseUnit: bigint }>();
+  for (const line of lines) {
+    const prior = totals.get(line.commodityId) ?? { costKobo: 0n, qtyBaseUnit: 0n };
+    totals.set(line.commodityId, {
+      costKobo: prior.costKobo + BigInt(line.paidPriceKobo),
+      qtyBaseUnit: prior.qtyBaseUnit + BigInt(line.qtyInBaseUnit),
+    });
+  }
+  return [...totals.entries()].map(([commodityId, t]) => ({ commodityId, ...t }));
+}
+
+/**
+ * Commodity ids from these lines that are outlier-flagged and NOT yet
+ * confirmed by the user — the engine's `excludedCommodityIds` input (TR
+ * §3.2): pulled out of PRICE/WHAT_YOU_BOUGHT into the single always-visible
+ * EXCLUDED_DELTA reconciliation line, so the ledger still ties to the user's
+ * true change rather than a silently-filtered one.
+ */
+export function unconfirmedOutlierCommodityIds(lines: readonly LocalLine[]): string[] {
+  return [...new Set(lines.filter((l) => l.outlierFlagged && !l.userConfirmed).map((l) => l.commodityId))];
+}
+
 export async function repeatLastShop(
   userId: string,
   sourceTripId: string,

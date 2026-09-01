@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation as useRouterLocation } from "wouter";
+import { Link, useLocation as useRouterLocation } from "wouter";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db, getOpenDraft } from "../../lib/db.js";
 import { formatNaira, parseNairaToKobo } from "../../lib/money.js";
@@ -11,10 +11,12 @@ import type { LocalLine } from "../../lib/db.js";
  * editable in place. Outlier-flagged lines get a neutral "check this" prompt,
  * never an error/warning treatment (US-1.3 AC). No blocking modals.
  *
- * Crowd annotation ("Others paid…") intentionally renders nothing here —
- * that empty state is designed on purpose (screen 6's third annotation
- * variant), not a gap; crowd data doesn't exist until stage 4/7. See
- * Technical Requirements §3.1 (build-order note).
+ * Crowd annotation ("Others paid…") intentionally renders nothing INLINE
+ * here — that empty state is designed on purpose (screen 6's third
+ * annotation variant). As of stage 4, each line links out to Commodity
+ * Detail (screen 11) instead, which renders the crowd band's own honest
+ * states (including "not enough shoppers yet") — showing it inline here too
+ * would duplicate that state machine for no benefit at confirm time.
  */
 export function ConfirmTrip({ userId }: { userId: string }) {
   const [, navigate] = useRouterLocation();
@@ -61,7 +63,7 @@ export function ConfirmTrip({ userId }: { userId: string }) {
     setCommitting(true);
     try {
       await commitTrip(tripId);
-      navigate("/");
+      navigate(`/trips/${tripId}/summary`);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -83,7 +85,11 @@ export function ConfirmTrip({ userId }: { userId: string }) {
 
           return (
             <li key={line.id} data-outlier={line.outlierFlagged}>
-              <strong>{commodity?.canonicalName ?? line.rawText ?? "Unknown item"}</strong>
+              <strong>
+                <Link to={`/commodity/${line.commodityId}`}>
+                  {commodity?.canonicalName ?? line.rawText ?? "Unknown item"}
+                </Link>
+              </strong>
 
               <label>
                 Quantity
