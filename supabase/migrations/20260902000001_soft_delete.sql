@@ -28,7 +28,7 @@ ALTER TABLE watchlist      ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
 --    the original timestamp no matter what the incoming row says. A fresh
 --    tombstone (OLD null, NEW non-null) passes through untouched.
 CREATE OR REPLACE FUNCTION keep_tombstone_sticky()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
 BEGIN
   IF OLD.deleted_at IS NOT NULL THEN
     NEW.deleted_at := OLD.deleted_at;
@@ -154,8 +154,13 @@ $$;
 
 -- 3d. trips_enqueue_buckets — identical to 20260831000001 except the UPDATE
 --     early-return no longer skips a change that only flipped deleted_at.
+--     NOTE: `SET search_path = public` is required here, not optional. Migration
+--     20260901203138 item 4 pinned it via ALTER FUNCTION; CREATE OR REPLACE
+--     rewrites a function's configuration parameters too, so omitting it would
+--     silently revert that hardening and re-raise the advisor's
+--     function_search_path_mutable finding.
 CREATE OR REPLACE FUNCTION trips_enqueue_buckets()
-RETURNS trigger LANGUAGE plpgsql AS $$
+RETURNS trigger LANGUAGE plpgsql SET search_path = public AS $$
 DECLARE
   r record;
   v_trip_id uuid;

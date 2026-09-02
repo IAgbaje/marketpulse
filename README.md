@@ -35,10 +35,20 @@ npm run dev
 ```
 
 Node 22+. The Supabase project (`qkohesyqyknavriyhlsc`, org "Ibraheem
-Agbaje") has migrations `20260831000001`–`20260901221012` applied and the
-seed data loaded. Two new migrations
-(`20260902000001_soft_delete`, `20260902000002_security_advisor_followup`)
-ship in this repo and still need `supabase db push` — see **Deploy**.
+Agbaje") has every migration in `supabase/migrations/` applied through
+`20260902000002`, and the seed data loaded.
+
+> **Migration-history note (2026-09-02).** The live DB was originally built
+> from an earlier migration lineage that a later "consolidate backend" pass
+> renamed, so `supabase_migrations.schema_migrations` recorded nine versions
+> that no longer exist as files here (`20260824123000`, `20260824130000`,
+> `20260901201541`–`20260901202134`, `20260901220933`) while four files that
+> *were* in effect (`20260831000001`–`20260831000004`) were recorded as
+> unapplied. That was reconciled with `supabase migration repair`
+> (`--status applied` for the four, `--status reverted` for the nine) after
+> verifying each one's objects actually exist on the live DB. This repo is
+> now the single source of truth for migration history — don't re-run those
+> repairs.
 
 ## Deploy
 
@@ -50,10 +60,20 @@ is the real control). Set them in Vercel Project Settings → Environment
 Variables and mirror `VITE_SUPABASE_ANON_KEY` into the GitHub repo secret
 of the same name for CI's build step.
 
+**Live:** https://marketpulse-pi-eight.vercel.app (production, deployed
+2026-09-02). Migrations through `20260902000002` are applied; all four edge
+functions are deployed.
+
+Ordering that matters: `src/lib/sync.ts` puts `deleted_at` in every trip,
+line and watchlist upsert payload, so **`20260902000001` must be applied
+before the frontend ships** — otherwise PostgREST rejects the unknown column
+and *all* trip sync fails, not just deletes.
+
 ```bash
 git push origin main                                  # CI runs typecheck/test/build/bundle-size
-supabase db push                                       # applies 20260902000001 + ...000002
-vercel --prod                                          # or connect the repo in the Vercel dashboard
+supabase db push                                      # DB first — see ordering note above
+supabase functions deploy anon-signin-gate ocr-proxy merge-anonymous-data keepalive
+vercel --prod                                         # frontend last
 # then, before the photo path can extract for real:
 supabase secrets set OCR_IP_SALT=... VISION_API_URL=... VISION_API_KEY=... \
   VISION_MODEL=... CAPTCHA_SECRET=... CAPTCHA_VERIFY_URL=...
@@ -102,6 +122,26 @@ activates once `SUPABASE_DB_URL` is set as a repo secret.
   toggle (Authentication → Providers → Password), turn on before public
   launch. Other security-advisor findings are addressed or documented as
   accepted in `supabase/migrations/20260902000002_security_advisor_followup.sql`.
+
+- **LAUNCH BLOCKER — `public.spatial_ref_sys` is writable by `anon`.**
+  Verified live on 2026-09-02, not theoretical: `GET /rest/v1/spatial_ref_sys`
+  returns 200 with the publishable key, and a filtered `DELETE` probe returns
+  204 (authorized). The ACL is `anon=arwdDxtm/supabase_admin` — all privileges,
+  **granted by `supabase_admin`**. Migrations run as `postgres`, which can only
+  revoke grants it issued itself, so the `REVOKE` in
+  `20260901221012_spatial_ref_sys_revoke.sql` is a silent no-op (Postgres warns,
+  it does not error — which is why this went unnoticed and why the migration
+  "succeeding" proved nothing). The same applies to the `st_estimatedextent`
+  revoke in `20260902000002`, which additionally misses the `=X/supabase_admin`
+  **PUBLIC** grant that `anon`/`authenticated` inherit EXECUTE through.
+  Neither can be fixed from an app migration. Options, in order of preference:
+  (a) ask Supabase support to revoke as `supabase_admin`; (b) move `postgis`
+  out of `public` into `extensions` so the table leaves the PostgREST-exposed
+  schema — the fix `20260902000002` rejected as risky, which is now the wrong
+  trade given a confirmed destructive-write hole; (c) accept, documented, and
+  do not launch publicly. An attacker cannot reach money or PII this way, but
+  can `DELETE`/`TRUNCATE` the 8500-row SRID catalog and break every PostGIS
+  operation.
 
 ## Deleting data
 
