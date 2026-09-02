@@ -16,9 +16,14 @@ export function formatNaira(kobo: bigint): string {
   return `${negative ? "-" : ""}₦${grouped}.${decimals}`;
 }
 
-/** Parses a user-entered naira amount (e.g. "1500", "1500.50") into kobo. */
+/**
+ * Parses a user-entered naira amount into kobo. Accepts "1500", "1500.50",
+ * and the grouped form `formatNaira` itself emits ("1,500.50") — a price
+ * field pre-filled from `formatNaira` must round-trip, or editing a value
+ * ≥ ₦1,000 would silently parse to null.
+ */
 export function parseNairaToKobo(input: string): bigint | null {
-  const trimmed = input.trim();
+  const trimmed = input.replace(/,/g, "").trim();
   if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
 
   const parts = trimmed.split(".");

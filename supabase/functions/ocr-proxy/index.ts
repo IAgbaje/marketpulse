@@ -27,7 +27,12 @@ import {
   MAX_IMAGES_PER_OCR_CALL,
   decideOcrGate,
   estimateOcrCostMicroUsd,
-} from '../../../lib/ocr/costModel.ts';
+} from '../../../src/lib/ocr/costModel.ts';
+import {
+  VISION_INSTRUCTION,
+  VISION_JSON_SCHEMA,
+  parseOcrExtraction,
+} from '../../../src/lib/ocr/extractionContract.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
@@ -150,24 +155,35 @@ Deno.serve(async (req) => {
   }
 
   // --- dispatch to the vision model -----------------------------------------
+  // The response shape is defined by MarketPulse, not the provider: send the
+  // contract instruction + JSON schema (both understood by the client too),
+  // then validate what comes back before returning it.
   let succeeded = false;
   let actualMicroUsd = estimate;
-  let extraction: unknown = null;
+  let rawBody: unknown = null;
   try {
     const res = await fetch(VISION_API_URL, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${VISION_API_KEY}` },
-      body: JSON.stringify({ model: VISION_MODEL, images: payload.images }),
+      body: JSON.stringify({
+        model: VISION_MODEL,
+        images: payload.images,
+        instruction: VISION_INSTRUCTION,
+        schema: VISION_JSON_SCHEMA,
+        response_format: { type: 'json_schema', json_schema: { name: 'ocr_extraction', schema: VISION_JSON_SCHEMA, strict: true } },
+      }),
     });
-    const body = await res.json();
+    rawBody = await res.json();
     succeeded = res.ok;
-    extraction = body?.extraction ?? body;
-    if (typeof body?.usage?.total_cost_micro_usd === 'number') {
-      actualMicroUsd = Math.max(0, Math.ceil(body.usage.total_cost_micro_usd));
+    if (
+      typeof rawBody === 'object' && rawBody !== null &&
+      typeof (rawBody as { usage?: { total_cost_micro_usd?: unknown } }).usage?.total_cost_micro_usd === 'number'
+    ) {
+      actualMicroUsd = Math.max(0, Math.ceil((rawBody as { usage: { total_cost_micro_usd: number } }).usage.total_cost_micro_usd));
     }
   } catch (e) {
     succeeded = false;
-    extraction = { error: 'vision_upstream_unreachable', detail: String(e) };
+    rawBody = { error: 'vision_upstream_unreachable', detail: String(e) };
   }
 
   if (ledgerId) {
@@ -181,5 +197,13 @@ Deno.serve(async (req) => {
   if (!succeeded) {
     return json(200, { degrade: 'manual_entry', reason: 'vision_failed' });
   }
-  return json(200, { extraction });
+
+  // Validate against the contract. When the model replied but nothing parses,
+  // pass the raw body straight through under `extraction` — the client runs
+  // the SAME `parseOcrExtraction`, fails it too, and shows the honest
+  // "couldn't read a clear list, keep the photo, add by hand" state
+  // (`kind: "unreadable"`). `degrade` is reserved for budget/rate-limit/upstream
+  // failure — an unreadable-but-successful reply is not a service degradation.
+  const parsed = parseOcrExtraction(rawBody);
+  return json(200, { extraction: parsed ?? rawBody });
 });

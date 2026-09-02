@@ -2,25 +2,31 @@
  * Client wrapper for the `ocr-proxy` Edge Function (Stage 6, TR §6.1). Thin
  * on purpose — all the actual cost/rate-limit logic lives server-side
  * (supabase/functions/ocr-proxy, migration 20260831000003) so it can't be
- * bypassed by a modified client. This just shapes the request/response.
+ * bypassed by a modified client. This shapes the request and validates the
+ * response against the OCR extraction contract (src/lib/ocr/extractionContract)
+ * before handing anything downstream — an unrecognised payload is reported
+ * honestly, never misparsed against a guessed shape.
  */
 
 import { supabase } from "./supabase.js";
+import {
+  parseOcrExtraction,
+  toDraftItems,
+  type OcrDraftItem,
+} from "./ocr/extractionContract.js";
 
 export const MAX_IMAGES_PER_OCR_CALL = 3;
 
 export type OcrResult =
+  /** Budget/rate-limit exhausted, or the vision call failed — the DESIGNED
+   *  fallback (US-1.2), not an error. */
   | { kind: "degrade"; reason: string }
-  /**
-   * `extraction` is intentionally `unknown`: the vision model's response
-   * shape is not defined anywhere in the source docs (checked — Technical
-   * Requirements never specifies an OCR extraction JSON contract, only that
-   * a vision-model call happens). Mapping this to draft line items is
-   * blocked on that contract existing, not on anything in this file — see
-   * PhotoCapture.tsx for how that gap is surfaced to the user rather than
-   * papered over with an invented shape.
-   */
-  | { kind: "extraction"; extraction: unknown }
+  /** The model returned at least one usable line item, validated + currency-normalised. */
+  | { kind: "extracted"; items: OcrDraftItem[]; notes: string | null }
+  /** The model replied but nothing matched the contract — surface honestly,
+   *  keep the photo, offer manual entry. */
+  | { kind: "unreadable"; extraction: unknown }
+  /** The call itself failed (network, auth). Retryable. */
   | { kind: "error"; message: string };
 
 /**
@@ -67,7 +73,9 @@ export async function captureReceipts(files: File[]): Promise<OcrResult> {
     return { kind: "degrade", reason: data.reason ?? "unavailable" };
   }
   if (data && "extraction" in data) {
-    return { kind: "extraction", extraction: data.extraction };
+    const parsed = parseOcrExtraction(data.extraction);
+    if (!parsed) return { kind: "unreadable", extraction: data.extraction };
+    return { kind: "extracted", items: toDraftItems(parsed), notes: parsed.notes };
   }
   return { kind: "error", message: "Unexpected response from the photo scanner." };
 }

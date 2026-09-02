@@ -44,6 +44,19 @@ describe("parseNairaToKobo", () => {
     expect(parseNairaToKobo("-100")).toBeNull();
   });
 
+  it("accepts the grouped form formatNaira emits, so a pre-filled field round-trips", () => {
+    expect(parseNairaToKobo("1,500")).toBe(150_000n);
+    expect(parseNairaToKobo("2,450.75")).toBe(245_075n);
+    expect(parseNairaToKobo("1,234,567.89")).toBe(123_456_789n);
+  });
+
+  it("round-trips a value ≥ ₦1,000 out of formatNaira and back without loss", () => {
+    for (const kobo of [150_000n, 245_075n, 1_234_567_89n]) {
+      const text = formatNaira(kobo).replace(/^₦/, "");
+      expect(parseNairaToKobo(text)).toBe(kobo);
+    }
+  });
+
   it("round-trips through formatNaira", () => {
     const kobo = parseNairaToKobo("2450.75");
     expect(kobo).not.toBeNull();
