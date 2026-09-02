@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "wouter";
+import { flag } from "../../lib/flags.js";
 import { formatNaira } from "../../lib/money.js";
 import {
   addMonths,
@@ -20,19 +21,17 @@ import {
 
 /**
  * Screen 10 — Budget vs actual (§4 stage 5, `/budget`). Stage 5 splits into
- * two priorities and this screen only builds the P0 half:
+ * two priorities:
  *
- *   `fullSplitEnabled` is hardcoded false below — stage 5b (the full
- *   PRICE/WHAT_YOU_BOUGHT/basket-change breakdown) is explicitly P1 in the
- *   build order, gated behind "≥ 2 complete months AND the 5b feature
- *   flag", and there is no feature-flag system in this app yet to gate it
- *   with. Shipping only price-effect-only here matches that priority split
- *   exactly rather than jumping ahead of it. `selectTier` and the 'full'
- *   branch below are still fully implemented against the engine's real
- *   output — turning stage 5b on later is flipping this one constant, not
- *   new engineering.
+ *   - 5a (P0): price-effect-only tier — always available at ≥ 2 complete months.
+ *   - 5b (P1): the full PRICE / WHAT_YOU_BOUGHT / basket-change / excluded
+ *     breakdown — gated behind "≥ 2 complete months AND the 5b feature flag"
+ *     (§7.7). The flag is `fullDecompositionSplit` (src/lib/flags.ts): off by
+ *     default, flip via `VITE_FLAG_FULL_DECOMPOSITION_SPLIT=true` at build or a
+ *     per-device localStorage override. `selectTier` and the 'full' branch
+ *     below already run against the engine's real output and its exact-tie
+ *     display model — enabling 5b is the flag, not new engineering.
  */
-const FULL_SPLIT_ENABLED = false;
 
 type ViewState =
   | { kind: "loading" }
@@ -66,7 +65,10 @@ export function BudgetAnalysis({ userId }: { userId: string }) {
       ]);
       const spentKobo = thisMonthLines.reduce((sum, l) => sum + BigInt(l.paidPriceKobo), 0n);
 
-      const tier = selectTier({ completeMonths, fullSplitEnabled: FULL_SPLIT_ENABLED });
+      const tier = selectTier({
+        completeMonths,
+        fullSplitEnabled: flag("fullDecompositionSplit"),
+      });
 
       let priceEffect: PriceEffectTier | null = null;
       let full: DecompositionDisplayModel | null = null;
