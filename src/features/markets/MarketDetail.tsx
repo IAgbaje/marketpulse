@@ -9,11 +9,14 @@ import type { LocalLocation } from "../../lib/db.js";
 /**
  * Market detail (§4 stage 8, V1: `/map/market/:id`). Named as a map
  * drill-down in the doc, but nothing here actually needs the map to be
- * useful, and the map itself is blocked (no PostGIS in the schema yet, and
- * the GeoJSON boundary source's licence is an open primary-source question
- * per TR §8 open item 3 — not something to fabricate an answer to). So this
- * ships as its own reachable page (linked from the Markets list) rather
- * than waiting on the map — a price board for one market, this month.
+ * useful, and the map itself is data-blocked, not engineering-blocked: ADR
+ * 0001 locks it as a hand-rolled inline-SVG LGA choropleth reading
+ * price_aggregates (no spatial types, no spatial library — PostGIS was
+ * dropped in 20260902000003 as unused), so what it waits on is the LGA
+ * polygon source and populated locations.centroid_lat/lon, plus the boundary
+ * licence question in TR §8 open item 3. So this ships as its own reachable
+ * page (linked from the Markets list) rather than waiting on the map — a
+ * price board for one market, this month.
  */
 type ViewState =
   | { kind: "loading" }

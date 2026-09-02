@@ -1,0 +1,60 @@
+-- =============================================================================
+-- Drop PostGIS. It is unused, and its presence in `public` was a live
+-- security hole that no migration could close.
+--
+-- WHY THIS, AND NOT A REVOKE OR A SCHEMA MOVE
+--
+--   `public.spatial_ref_sys` ships with PostGIS and was writable by `anon`:
+--   the ACL was `anon=arwdDxtm/supabase_admin` — every privilege, INCLUDING
+--   DELETE and TRUNCATE — reachable over the Data API with the publishable
+--   key that ships in the browser bundle. Verified live on 2026-09-02:
+--   GET /rest/v1/spatial_ref_sys returned 200, and a filtered DELETE probe
+--   returned 204 (authorized).
+--
+--   The two prior attempts to close it could never have worked:
+--     * 20260901221012 REVOKEd on spatial_ref_sys. Migrations run as
+--       `postgres`; the grants were issued by `supabase_admin`. Postgres only
+--       lets you revoke grants you issued yourself, and a REVOKE that revokes
+--       nothing raises a WARNING, not an ERROR — so the migration "succeeded"
+--       and changed nothing. That is why this went unnoticed.
+--     * 20260902000002 REVOKEd EXECUTE on st_estimatedextent from anon and
+--       authenticated. Same grantor problem, plus the function's ACL carried
+--       `=X/supabase_admin` — a grant to PUBLIC, which anon/authenticated
+--       inherit EXECUTE through regardless of their own grants.
+--
+--   Relocating the extension out of `public` is not available either:
+--   postgis 3.3.7 declares `relocatable = false`, so ALTER EXTENSION ...
+--   SET SCHEMA refuses outright.
+--
+--   That leaves dropping it — which is the right answer anyway, because
+--   nothing uses it. Verified before writing this migration:
+--     * zero geometry/geography/box2d/box3d columns in the database
+--     * locations.centroid_lat / centroid_lon are `double precision`, not
+--       PostGIS types
+--     * no GiST/SP-GiST (spatial) indexes
+--     * no non-extension objects with a dependency on the extension
+--     * ADR 0001 locks the price map as a hand-rolled inline-SVG LGA
+--       choropleth reading price_aggregates — it needs no spatial types,
+--       no spatial functions, and no spatial indexes
+--
+--   PostGIS was enabled speculatively in 20260901220336 for a map design
+--   that was subsequently decided against.
+--
+-- RESTRICT, not CASCADE — deliberately. If any dependency exists that the
+-- checks above missed, this migration must FAIL rather than silently drop
+-- application objects.
+-- =============================================================================
+
+DROP EXTENSION IF EXISTS postgis RESTRICT;
+
+-- =============================================================================
+-- DOWN (manual):
+--   CREATE EXTENSION postgis SCHEMA public;
+--
+--   Note that restoring it also restores the exposure this migration closed:
+--   spatial_ref_sys comes back owned by supabase_admin with the same grants
+--   to anon/authenticated, and no migration running as `postgres` can revoke
+--   them. If the map ever needs real spatial types, install PostGIS into the
+--   `extensions` schema instead (CREATE EXTENSION postgis SCHEMA extensions)
+--   so its tables are never exposed through PostgREST in the first place.
+-- =============================================================================
