@@ -26,20 +26,37 @@ source.
 
 ---
 
-## What this ADR does NOT decide: the map library, or when to build it
+## Map library and render approach — decided 2026-09-02
 
-Enabling this data source is not the same as building the map. Rendering an
-actual interactive map needs a client-side mapping library, and every
-mainstream option (MapLibre GL JS, Leaflet + a tile provider, etc.) adds
-meaningfully to the JS bundle — likely enough, on its own, to blow past this
-app's stated <300KB gzipped budget (TR §12; currently ~160KB). That's a real
-product trade-off (map interactivity vs. load time on the low-end-Android,
-variable-network audience this product targets), not a default I'm
-comfortable picking silently on an explicit, stated constraint.
+- **Library: none.** No MapLibre GL, no Leaflet. The Price Map is a
+  **hand-rolled inline-SVG choropleth** of Lagos-State LGAs (≈20 polygons
+  from the geoBoundaries ADM2 file above, pre-simplified and committed as a
+  small static asset), filled by median price with market pins on top, on
+  the `/map` route as a lazy-loaded chunk. Rationale: the bundle-size gate
+  (`scripts/check-bundle-size.mjs`) sums **all** emitted JS, not just the
+  initial route, so code-splitting does not buy back a library's weight —
+  and a ~20-polygon choropleth with pan/zoom via `viewBox` needs no
+  library. Zero new runtime dependency, trivially inside the 300KB budget.
+- **Interactivity:** pan/zoom + tap-a-LGA/pin → drill to Market Detail.
+  No basemap tiles (no tile-provider key, no external tile dependency) —
+  the choropleth polygons are the map.
 
-**Not decided, deliberately:** library choice, and whether the map route
-should be a lazy-loaded chunk (keeping it off the main bundle entirely) or a
-separate lighter-weight approach (e.g. a static/server-rendered image map
-for V1, deferring true interactivity). Market Detail, Price Comparison, and
-Basket Comparison — the other three Stage 8 screens — don't depend on this
-and are built.
+## What is actually blocking the build now: **data readiness, not engineering**
+
+The map has nothing to render yet. `locations` has `centroid_lat` /
+`centroid_lon` columns (migration 20260831000001) but they are **unpopulated**,
+and only a **minimal 5-row Lagos bootstrap** is seeded — one state, a couple
+of LGAs, a market or two, no coordinates. A choropleth needs the LGA polygon
+set loaded and market rows with real coordinates.
+
+**Unblock sequence (all data/seed work, no app-code decisions left):**
+1. Add the pre-simplified Lagos-LGA GeoJSON as a committed static asset.
+2. Seed the full Lagos LGA + market hierarchy with `centroid_lat/lon`
+   populated (extends `marketpulse/data/*.json` + the seed generator).
+3. Then the `/map` screen is a mechanical build against the decisions above.
+
+Until then the route serves the list-based **MarketsList / MarketDetail**,
+and **Price Comparison** and **Basket Comparison** — the three Stage 8
+screens that carry the decision-support value — are built and shipping.
+The map is a V1 visual enhancement on top of that, gated on the seed, not
+on any open engineering question.

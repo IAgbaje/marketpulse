@@ -20,11 +20,11 @@ anything works end-to-end without setup.
 | 2 | Manual capture + confirm + local storage | Done, incl. offline-durability resume |
 | 3 | Anonymous auth + sync + account upgrade | Done |
 | 4 | Personal trip comparison, Home, Commodity Detail | Done |
-| 5 | Decomposition engine -> budget vs actual | Done (P0 tier only — see below) |
-| 6 | OCR layer | Done (proxy wired; extraction parsing blocked, see below) |
+| 5 | Decomposition engine -> budget vs actual | Done — 5a always on; 5b behind `flag("fullDecompositionSplit")` (`src/lib/flags.ts`) |
+| 6 | OCR layer | Done — contract + parser + review screen (`src/lib/ocr/extractionContract.ts`, `ocrMapping.ts`); needs `VISION_API_*` secrets to be live end-to-end |
 | 7 | Crowd annotations live | Done |
-| 8 | Map + comparison modes | Partial — Market Detail/Price Comparison/Basket Comparison done, map itself deferred (see [ADR 0001](docs/adr/0001-price-map-geo-data-source.md)) |
-| 9 | Sharing + weekly reports, watchlist | Done (in-app delivery only — see below) |
+| 8 | Map + comparison modes | Comparison screens done; the choropleth is a documented, data-blocked V1 item — decisions locked in [ADR 0001](docs/adr/0001-price-map-geo-data-source.md) |
+| 9 | Sharing + weekly reports, watchlist | Done (in-app alert delivery only — see below) |
 
 ## Setup
 
@@ -35,9 +35,29 @@ npm run dev
 ```
 
 Node 22+. The Supabase project (`qkohesyqyknavriyhlsc`, org "Ibraheem
-Agbaje") already has every migration in `supabase/migrations/` applied and
-the seed data loaded — `npm run dev` should work against it directly, no
-`supabase db push` needed for a fresh clone.
+Agbaje") has migrations `20260831000001`–`20260901221012` applied and the
+seed data loaded. Two new migrations
+(`20260902000001_soft_delete`, `20260902000002_security_advisor_followup`)
+ship in this repo and still need `supabase db push` — see **Deploy**.
+
+## Deploy
+
+Hosted on **Vercel** (`vercel.json` — SPA rewrite, security headers,
+immutable asset caching, PWA no-cache for the SW/manifest). Two env vars,
+both publishable client-side values (`VITE_SUPABASE_URL`,
+`VITE_SUPABASE_ANON_KEY` — the anon key is meant to ship in the bundle; RLS
+is the real control). Set them in Vercel Project Settings → Environment
+Variables and mirror `VITE_SUPABASE_ANON_KEY` into the GitHub repo secret
+of the same name for CI's build step.
+
+```bash
+git push origin main                                  # CI runs typecheck/test/build/bundle-size
+supabase db push                                       # applies 20260902000001 + ...000002
+vercel --prod                                          # or connect the repo in the Vercel dashboard
+# then, before the photo path can extract for real:
+supabase secrets set OCR_IP_SALT=... VISION_API_URL=... VISION_API_KEY=... \
+  VISION_MODEL=... CAPTCHA_SECRET=... CAPTCHA_VERIFY_URL=...
+```
 
 ## Verify
 
@@ -56,31 +76,40 @@ activates once `SUPABASE_DB_URL` is set as a repo secret.
 ## What's not done, and why (not a hidden TODO list — read before assuming something works)
 
 - **OCR/CAPTCHA Edge Function secrets are unset.** `ocr-proxy` and
-  `anon-signin-gate` are deployed and reachable, but degrade gracefully
+  `anon-signin-gate` are deployed and reachable, and degrade gracefully
   (not crash) until `OCR_IP_SALT`, `VISION_API_URL`, `VISION_API_KEY`,
   `VISION_MODEL`, `CAPTCHA_SECRET`, `CAPTCHA_VERIFY_URL` are set via
-  `supabase secrets set`. Real credentials — not something to invent.
-- **OCR extraction -> line items is not built.** No source doc defines the
-  vision model's response shape. `PhotoCapture.tsx` calls the real proxy
-  and handles the degrade path fully; a successful extraction is shown to
-  the user honestly rather than parsed against an invented schema.
-- **The Price Map itself isn't built.** Geo-data licensing is resolved
-  (ADR 0001) and `postgis` is enabled, but no mapping library is wired in —
-  every mainstream option would likely blow the 300KB gzipped bundle
-  budget on its own, a real trade-off, not a default to pick silently.
-- **Stage 5 ships P0 (price-effect-only) only.** Stage 5b (full PRICE /
-  WHAT_YOU_BOUGHT split) needs a feature-flag system that doesn't exist
-  yet; the engine and display code for it are already implemented behind
-  one constant (`FULL_SPLIT_ENABLED` in `BudgetAnalysis.tsx`).
+  `supabase secrets set`. Real credentials — not something to invent. The
+  extraction pipeline (contract → validate → map → review screen) is built
+  and tested against fixtures; a live vision key is the only thing between
+  it and end-to-end photo capture.
+- **The Price Map choropleth isn't built — it's data-blocked, not
+  engineering-blocked.** ADR 0001 now locks every open decision (no
+  library, inline-SVG Lagos-LGA choropleth, `/map` lazy chunk). It has
+  nothing to render until `locations.centroid_lat/lon` is populated and the
+  full Lagos LGA + market hierarchy is seeded — a seed task. The three
+  comparison screens that carry Stage 8's value are shipping.
 - **Watchlist alert delivery is in-app only.** TR §6.2 leaves push/email
   as an explicitly unresolved V1 product decision — not an engineering gap.
-- **Deleting a trip line or a watchlist item is local-only.** The removal
-  never reaches the server. Needs a tombstone/soft-delete convention
-  applied consistently across every synced table — a deliberate, disclosed
-  gap, not an oversight.
+- **Stage 5b is off by default.** `flag("fullDecompositionSplit")` —
+  `VITE_FLAG_FULL_DECOMPOSITION_SPLIT=true` at build, or a per-device
+  `localStorage` override. Engine + display model are done and tested;
+  §7.7 keeps most users on the price-effect tier until it's deliberately on.
 - **Commodity master-list ownership** (`data/README.md`'s named owner) and
   **the NDPA cross-border ToS/consent copy** (needed before public launch,
   not before this point) are product/legal decisions, not engineering ones.
+- **Supabase Auth: leaked-password protection is off** — a dashboard
+  toggle (Authentication → Providers → Password), turn on before public
+  launch. Other security-advisor findings are addressed or documented as
+  accepted in `supabase/migrations/20260902000002_security_advisor_followup.sql`.
+
+## Deleting data
+
+Removing a line, a trip (`TripSummary` → "Delete this shop") or a watch is a
+**tombstone**, not a local-only delete: `deletedAt` is set, the row is hidden
+from every read, and it syncs to the server where the tombstone is *sticky*
+(a stale concurrent edit can't resurrect it). Crowd aggregates drop the
+removed line. Migration `20260902000001_soft_delete`.
 
 ## Money & data invariants (do not relax these)
 
