@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="MarketPulse">
+  <rect width="512" height="512" rx="112" fill="#0f172a"/>
+  <path
+    d="M64 296 h84 l40 -128 l52 208 l44 -132 l30 76 h134"
+    fill="none"
+    stroke="#38bdf8"
+    stroke-width="34"
+    stroke-linecap="round"
+    stroke-linejoin="round"/>
+  <circle cx="404" cy="320" r="24" fill="#facc15"/>
+</svg>
