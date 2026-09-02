@@ -35,21 +35,27 @@ export async function addWatch(
     currency: "NGN",
     clientUpdatedAt: nowIso(),
     syncStatus: "pending" as SyncStatus,
+    deletedAt: null,
   };
   await db.watchlist.add(watch);
   return watch;
 }
 
 /**
- * Local-only for now — see the LocalWatchlistItem doc comment in db.ts for
- * why (matches the existing deleteLine limitation, not a new one).
+ * Tombstone a watch: gone from every local read immediately, pushed to the
+ * server as `deleted_at` on the next sync pass and sticky there. Same
+ * soft-delete contract as `deleteLine` / `deleteTrip` (src/lib/trips.ts).
  */
 export async function removeWatch(id: string): Promise<void> {
-  await db.watchlist.delete(id);
+  await db.watchlist.update(id, { deletedAt: nowIso(), syncStatus: "pending" });
 }
 
 export async function listWatches(userId: string): Promise<LocalWatchlistItem[]> {
-  return db.watchlist.where("userId").equals(userId).toArray();
+  return db.watchlist
+    .where("userId")
+    .equals(userId)
+    .filter((w) => !w.deletedAt)
+    .toArray();
 }
 
 export interface WatchlistAlert {

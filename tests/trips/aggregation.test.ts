@@ -24,6 +24,7 @@ function line(over: Partial<LocalLine>): LocalLine {
     outlierFlagged: false,
     clientUpdatedAt: new Date().toISOString(),
     syncStatus: "pending",
+    deletedAt: null,
     ...over,
   };
 }

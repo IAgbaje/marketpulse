@@ -37,6 +37,7 @@ export async function getOrCreateDraft(
     clientUpdatedAt: nowIso(),
     syncStatus: "pending" as SyncStatus,
     isDraft: true,
+    deletedAt: null,
   };
   await db.trips.add(trip);
   return trip;
@@ -87,6 +88,7 @@ export async function addLine(input: AddLineInput): Promise<LocalLine> {
     outlierFlagged,
     clientUpdatedAt: nowIso(),
     syncStatus: "pending",
+    deletedAt: null,
   };
 
   await db.lines.add(line);
@@ -100,12 +102,38 @@ export async function updateLine(
   await db.lines.update(lineId, { ...patch, clientUpdatedAt: nowIso(), syncStatus: "pending" });
 }
 
+/**
+ * Tombstone a line: hidden from every local read immediately, and pushed to
+ * the server as `deleted_at` on the next sync pass (src/lib/sync.ts) — no
+ * longer local-only. Kept as a soft delete, not a hard one, so the removal
+ * survives an offline→online round trip and can't be lost to a racing edit
+ * from another device (the server tombstone is sticky).
+ */
 export async function deleteLine(lineId: string): Promise<void> {
-  await db.lines.delete(lineId);
+  await db.lines.update(lineId, { deletedAt: nowIso(), syncStatus: "pending" });
+}
+
+/**
+ * Tombstone a whole trip and every line on it. Used for "delete this past
+ * trip" (C10). Same soft-delete contract as `deleteLine`.
+ */
+export async function deleteTrip(tripId: string): Promise<void> {
+  const now = nowIso();
+  await db.transaction("rw", db.trips, db.lines, async () => {
+    await db.trips.update(tripId, { deletedAt: now, syncStatus: "pending" });
+    const lineIds = await db.lines.where("tripId").equals(tripId).primaryKeys();
+    await db.lines.bulkUpdate(
+      lineIds.map((key) => ({ key, changes: { deletedAt: now, syncStatus: "pending" as const } })),
+    );
+  });
 }
 
 export async function getTripLines(tripId: string): Promise<LocalLine[]> {
-  return db.lines.where("tripId").equals(tripId).toArray();
+  return db.lines
+    .where("tripId")
+    .equals(tripId)
+    .filter((l) => !l.deletedAt)
+    .toArray();
 }
 
 /**
@@ -128,7 +156,7 @@ async function recentLines(
   const lines = await db.lines
     .where("commodityId")
     .equals(commodityId)
-    .filter((l) => l.userId === userId)
+    .filter((l) => l.userId === userId && !l.deletedAt)
     .sortBy("clientUpdatedAt");
   return lines.slice(-limit).reverse();
 }
@@ -189,7 +217,7 @@ export async function findLastTripAtLocation(
   const trips = await db.trips
     .where("userId")
     .equals(userId)
-    .filter((t) => !t.isDraft && t.marketId === marketId)
+    .filter((t) => !t.isDraft && !t.deletedAt && t.marketId === marketId)
     .sortBy("clientUpdatedAt");
   return trips.at(-1);
 }
@@ -209,7 +237,7 @@ export async function findPriorTripAtLocation(
   const trips = await db.trips
     .where("userId")
     .equals(userId)
-    .filter((t) => !t.isDraft && t.marketId === marketId && t.id !== excludeTripId)
+    .filter((t) => !t.isDraft && !t.deletedAt && t.marketId === marketId && t.id !== excludeTripId)
     .sortBy("clientUpdatedAt");
   return trips.at(-1);
 }
@@ -237,7 +265,7 @@ export async function listRecentTrips(userId: string, limit = 10): Promise<Local
   const trips = await db.trips
     .where("userId")
     .equals(userId)
-    .filter((t) => !t.isDraft)
+    .filter((t) => !t.isDraft && !t.deletedAt)
     .sortBy("clientUpdatedAt");
   return trips.slice(-limit).reverse();
 }
@@ -287,6 +315,7 @@ export async function repeatLastShop(
     outlierFlagged: false,
     clientUpdatedAt: nowIso(),
     syncStatus: "pending",
+    deletedAt: null,
   }));
   await db.lines.bulkAdd(copies);
 }

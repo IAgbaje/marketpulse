@@ -4,6 +4,7 @@ import { db } from "../../lib/db.js";
 import { formatNaira } from "../../lib/money.js";
 import {
   aggregateLinesByCommodity,
+  deleteTrip,
   findPriorTripAtLocation,
   getTripLines,
   unconfirmedOutlierCommodityIds,
@@ -140,6 +141,7 @@ export function TripSummary({ tripId, userId }: { tripId: string; userId: string
         <button type="button" onClick={() => navigate("/")}>
           Done
         </button>
+        <DeleteShop tripId={tripId} onDeleted={() => navigate("/")} />
       </main>
     );
   }
@@ -188,7 +190,49 @@ export function TripSummary({ tripId, userId }: { tripId: string; userId: string
       <button type="button" onClick={() => navigate("/")}>
         Done
       </button>
+      <DeleteShop tripId={tripId} onDeleted={() => navigate("/")} />
     </main>
+  );
+}
+
+/**
+ * "Delete this shop" (C10). Two-step inline confirm — no blocking modal, same
+ * house rule as ConfirmTrip. The delete is a tombstone (trips.ts `deleteTrip`):
+ * it reaches the server on the next sync and is not recoverable from the UI,
+ * hence the confirm step.
+ */
+function DeleteShop({ tripId, onDeleted }: { tripId: string; onDeleted: () => void }) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  if (!armed) {
+    return (
+      <p>
+        <button type="button" onClick={() => setArmed(true)}>
+          Delete this shop
+        </button>
+      </p>
+    );
+  }
+  return (
+    <p role="group" aria-label="Confirm delete">
+      Delete this shop and everything in it?{" "}
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          void deleteTrip(tripId)
+            .then(onDeleted)
+            .catch(() => setBusy(false));
+        }}
+      >
+        {busy ? "Deleting…" : "Yes, delete"}
+      </button>{" "}
+      <button type="button" disabled={busy} onClick={() => setArmed(false)}>
+        Keep it
+      </button>
+    </p>
   );
 }
 

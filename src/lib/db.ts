@@ -38,6 +38,11 @@ export interface LocalTrip {
   syncStatus: SyncStatus;
   /** Set while the trip is still being captured; committed trips are false. */
   isDraft: boolean;
+  /** Tombstone (ISO), or null for a live row. Non-null ⇒ the user deleted
+   * this: hidden from every local read, pushed to the server as `deleted_at`,
+   * and sticky there — a stale concurrent edit can't resurrect it (migration
+   * 20260902000001). See src/lib/trips.ts `deleteTrip`. */
+  deletedAt: string | null;
 }
 
 export interface LocalLine {
@@ -67,6 +72,8 @@ export interface LocalLine {
   outlierFlagged: boolean;
   clientUpdatedAt: string;
   syncStatus: SyncStatus;
+  /** Tombstone (ISO), or null for a live row — see LocalTrip.deletedAt. */
+  deletedAt: string | null;
 }
 
 /**
@@ -135,11 +142,9 @@ export interface LocalBudget {
 }
 
 /**
- * Mirrors `watchlist` (Stage 9, My Watchlist). Deletion is LOCAL-ONLY for
- * now, same known limitation as `deleteLine` in trips.ts — removing a watch
- * removes it from this device but not (yet) the server copy. A real fix is
- * a tombstone/soft-delete convention applied consistently across every
- * synced table, which is a bigger, separate change than this feature.
+ * Mirrors `watchlist` (Stage 9, My Watchlist). Removal is a tombstone
+ * (`deletedAt`), consistent with trips and lines — set locally, pushed to
+ * the server, sticky there. See src/lib/watchlist.ts `removeWatch`.
  */
 export interface LocalWatchlistItem {
   id: string;
@@ -153,6 +158,8 @@ export interface LocalWatchlistItem {
   currency: string;
   clientUpdatedAt: string;
   syncStatus: SyncStatus;
+  /** Tombstone (ISO), or null for a live row — see LocalTrip.deletedAt. */
+  deletedAt: string | null;
 }
 
 const db = new Dexie("marketpulse") as Dexie & {
@@ -222,6 +229,32 @@ db.version(4).stores({
   watchlist: "id, userId, commodityId, syncStatus",
 });
 
+// v5: soft-delete. No index change (deletedAt is filtered in JS, not
+// queried — IndexedDB indexes nulls poorly). The upgrade backfills the new
+// column as null on every existing trip/line/watch so reads that filter on
+// it don't have to treat `undefined` as a third state.
+db.version(5)
+  .stores({
+    trips: "id, userId, tripDate, syncStatus",
+    lines: "id, tripId, userId, commodityId, syncStatus",
+    commodities: "id, category, substituteGroup, provisional",
+    aliases: "alias, commodityId",
+    units: "id, commodityId, unitCode",
+    locations: "id, parentId, level",
+    budgets: "id, userId, effectiveFrom, syncStatus",
+    watchlist: "id, userId, commodityId, syncStatus",
+  })
+  .upgrade(async (tx) => {
+    for (const table of ["trips", "lines", "watchlist"] as const) {
+      await tx
+        .table(table)
+        .toCollection()
+        .modify((row: { deletedAt?: string | null }) => {
+          if (row.deletedAt === undefined) row.deletedAt = null;
+        });
+    }
+  });
+
 export { db };
 
 /**
@@ -233,6 +266,6 @@ export async function getOpenDraft(userId: string): Promise<LocalTrip | undefine
   return db.trips
     .where("userId")
     .equals(userId)
-    .filter((t) => t.isDraft)
+    .filter((t) => t.isDraft && !t.deletedAt)
     .first();
 }

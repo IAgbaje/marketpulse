@@ -33,6 +33,9 @@ async function pushTrips(trips: LocalTrip[]): Promise<Set<string>> {
       currency: t.currency,
       capture_method: t.captureMethod,
       local_edited_at: t.clientUpdatedAt,
+      // Tombstone travels with the row; the server keeps it sticky
+      // (migration 20260902000001) so a stale edit can't undo the delete.
+      deleted_at: t.deletedAt,
     }));
   if (rows.length === 0) return new Set();
 
@@ -73,6 +76,7 @@ async function pushLines(lines: LocalLine[]): Promise<Set<string>> {
         purchase_form: l.purchaseForm,
         flagged_outlier: l.outlierFlagged,
         outlier_confirmed: l.outlierFlagged ? l.userConfirmed : null,
+        deleted_at: l.deletedAt,
       };
     })
     .filter((r): r is NonNullable<typeof r> => r !== null);
@@ -121,6 +125,7 @@ async function pushWatchlist(watches: LocalWatchlistItem[]): Promise<Set<string>
     market_id: w.marketId,
     threshold_kobo: w.thresholdKobo,
     currency: w.currency,
+    deleted_at: w.deletedAt,
   }));
 
   const { error } = await supabase

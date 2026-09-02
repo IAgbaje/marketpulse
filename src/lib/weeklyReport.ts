@@ -40,14 +40,14 @@ export async function computeWeeklyReport(userId: string): Promise<WeeklyReport>
   const thisWeekTrips = await db.trips
     .where("userId")
     .equals(userId)
-    .filter((t) => !t.isDraft && t.tripDate >= weekAgo && t.tripDate < today)
+    .filter((t) => !t.isDraft && !t.deletedAt && t.tripDate >= weekAgo && t.tripDate < today)
     .toArray();
   const thisWeekLines = (await Promise.all(thisWeekTrips.map((t) => getTripLines(t.id)))).flat();
 
   const lastWeekTrips = await db.trips
     .where("userId")
     .equals(userId)
-    .filter((t) => !t.isDraft && t.tripDate >= twoWeeksAgo && t.tripDate < weekAgo)
+    .filter((t) => !t.isDraft && !t.deletedAt && t.tripDate >= twoWeeksAgo && t.tripDate < weekAgo)
     .toArray();
   const lastWeekLines = (await Promise.all(lastWeekTrips.map((t) => getTripLines(t.id)))).flat();
 

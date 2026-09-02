@@ -103,7 +103,7 @@ export async function countCompleteMonths(userId: string): Promise<number> {
   const trips = await db.trips
     .where("userId")
     .equals(userId)
-    .filter((t) => !t.isDraft)
+    .filter((t) => !t.isDraft && !t.deletedAt)
     .toArray();
   const months = new Set(
     trips.map((t) => monthStart(new Date(t.tripDate))).filter((m) => m < currentMonth),
@@ -117,7 +117,7 @@ export async function monthLines(userId: string, month: string) {
   const trips = await db.trips
     .where("userId")
     .equals(userId)
-    .filter((t) => !t.isDraft && t.tripDate >= month && t.tripDate < nextMonth)
+    .filter((t) => !t.isDraft && !t.deletedAt && t.tripDate >= month && t.tripDate < nextMonth)
     .toArray();
   const lines = await Promise.all(trips.map((t) => getTripLines(t.id)));
   return lines.flat();
